@@ -47,3 +47,10 @@ security-reviewer aprueba toda migración y registra hallazgos aquí.
 | 2026-10-05 | DQR-T022 | H5 INFO: el CHECK de ip_hash no distingue una IPv6 en hex → HMAC-SHA256 (64 hex) con sal diaria en T023 | Info / T023 |
 | 2026-10-05 | DQR-T022 | H6 INFO: `record_scan` registra escaneos de enlaces pausados/archivados u orgs suspendidas → definir si cuentan | Info / product · T023 |
 | 2026-10-05 | DQR-T022 | H7 INFO: service_role puede UPDATE/DELETE/TRUNCATE; UNIQUE con ACCESS EXCLUSIVE; RLS por fila → rollups; cascade largo | Info |
+| 2026-10-05 | DQR-T021 | H1 MEDIA: destino/fallback no ASCII → Location latin-1 corrupto o 503 permanente → `quote(url, safe="!#$%&'()*+,/:;=?@[]~")` + exigir http(s) | Resuelto |
+| 2026-10-05 | DQR-T021 | H2 MEDIA: `redirect_slashes` → `/r/{slug}/` da 307 a `http://{Host}/…` sin no-store (cabecera en Location) → `FastAPI(redirect_slashes=False)` + ruta con barra final + prueba con Host hostil | Resuelto |
+| 2026-10-05 | DQR-T021 | H3 BAJA: cuerpo dict o destino None → 500 sin no-store; `""` → Location vacío → fila procesada dentro del try, `except Exception` → 503, validar esquema | Resuelto |
+| 2026-10-05 | DQR-T021 | H4 INFO: `t` libre (ASCII ≤ 64) frente a `tag_id` uuid → T023 valida uuid o no lo pasa hasta T034 | Info / T023 |
+| 2026-10-05 | DQR-T021 | H5 INFO: tope total del RPC (`asyncio.timeout(1.5)` → 503, hecho); falta fail-fast si no hay key (T055); rate limit en T050; archived va a fallback como pausado (decisión de producto); filtrar apikey en un APM | Parcial / T055 · T050 |
+| 2026-10-05 | DQR-T021 | R1 BAJA: `HTTPS://` guardado (la BD lo acepta con `~*`) → 503 permanente → esquema comparado sin distinguir mayúsculas (`urlsplit(url).scheme.lower()`) | Resuelto |
+| 2026-10-05 | DQR-T021 | R2 INFO (proceso): las filas de docs/06 las añade security-reviewer o el orquestador, no el agente de la tarea | Info / proceso |
