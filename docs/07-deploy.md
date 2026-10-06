@@ -52,16 +52,16 @@ cd apps/web && pnpm dlx vercel link --yes --project dqr-web && pnpm dlx vercel d
 ### Variables por entorno (sin valores)
 | Variable | Proyecto | Preview (staging) | Production |
 |---|---|---|---|
-| `SUPABASE_URL` | api | sí | pendiente |
-| `SUPABASE_ANON_KEY` | api | sí | pendiente |
-| `SUPABASE_SERVICE_ROLE_KEY` | api | sí (sensible) | pendiente |
+| `SUPABASE_URL` | api | cargada (preview) | pendiente |
+| `SUPABASE_ANON_KEY` | api | cargada (preview) | pendiente |
+| `SUPABASE_SERVICE_ROLE_KEY` | api | cargada (preview, sensible) | pendiente |
 | `SUPABASE_JWT_SECRET` | api | vacía: la API verifica con JWKS | pendiente |
-| `IP_HASH_SALT` | api | sí (generada con `openssl rand -hex 32`) | pendiente, distinta |
-| `TRUSTED_PROXY_HOPS` | api | `1` | pendiente |
-| `PUBLIC_REDIRECT_BASE_URL` | api | URL del API (ver pendientes) | dominio corto |
-| `NEXT_PUBLIC_SUPABASE_URL` | web | sí | pendiente |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | sí (tipo config; la anon key es pública, sujeta a RLS) | pendiente |
-| `NEXT_PUBLIC_API_URL` | web | URL del API (ver pendientes) | pendiente |
+| `IP_HASH_SALT` | api | cargada (preview; generada con `openssl rand -hex 32`) | pendiente, distinta |
+| `TRUSTED_PROXY_HOPS` | api | `1`, cargada (preview) | pendiente |
+| `PUBLIC_REDIRECT_BASE_URL` | api | cargada (preview) | dominio corto |
+| `NEXT_PUBLIC_SUPABASE_URL` | web | cargada (preview) | pendiente |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | cargada (preview; tipo config; la anon key es pública, sujeta a RLS) | pendiente |
+| `NEXT_PUBLIC_API_URL` | web | cargada (preview) | pendiente |
 
 Los secretos se cargan por pipe (`printf %s "$V" | vercel env add NAME preview`), sin escribirlos en archivos ni logs. `SUPABASE_SERVICE_ROLE_KEY` se usa como `apikey` y `Bearer`, por lo que debe ser la clave legacy `service_role` (JWT).
 
@@ -69,7 +69,12 @@ Los secretos se cargan por pipe (`printf %s "$V" | vercel env add NAME preview`)
 No hace falta: `apps/web/lib/api.ts` llama a la API solo desde el servidor (Server Components/Actions), con el token de la cookie. Si algún día se llama desde el navegador, añadir `CORSMiddleware` con lista blanca del dominio de la web.
 
 ### Deployment Protection
-Los previews de Vercel quedan tras SSO (responden 302). El redirector `/r/*` debe ser público, así que `dqr-api` necesita desactivar la protección del proyecto (solo ese proyecto, no la cuenta) o usar un bypass. **Decisión pendiente del usuario.** Mientras tanto, verificar con `pnpm dlx vercel curl <ruta> --deployment <url>`.
+Los previews de Vercel quedan tras SSO (responden 302). El redirector `/r/*` debe ser público, así que `dqr-api` necesita desactivar la protección del proyecto (solo ese proyecto, no la cuenta) o usar un bypass. **Paso pendiente: decisión del usuario (no tocar hasta entonces; no se crearon bypass ni se cambió la configuración).** Mientras tanto, verificar con `pnpm dlx vercel curl <ruta> --deployment <url>`.
+
+### Estado del preview (2026-10-06)
+- API: `https://dqr-83t9hq146-davides-projects-6878c5d7.vercel.app` (alias `https://dqr-api.vercel.app`): `/healthz` → 200.
+- Web: `https://dqr-48pgwp9bk-davides-projects-6878c5d7.vercel.app`: `/login` → 200.
+- `/r/AAAAAAA` → 503 genérico: la función `resolve_link` no existe aún en staging (PGRST202). Se espera 404 amable cuando el orquestador aplique las migraciones. La service key sí autentica contra PostgREST.
 
 ### Promover a producción (pendiente de OK del usuario)
 1. Proyecto Supabase de producción creado y migrado (security-reviewer aprueba).
