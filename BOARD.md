@@ -79,10 +79,10 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T052 | audit_log | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T053 | Planes y límites | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T054 | Consola Monky | frontend | DONE (qa PASS) | T043, T053 |
-| DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
+| DQR-T055 | Deploy Vercel + dominio | devops | DONE (prod: dqr-web.vercel.app + dqr-api.vercel.app · Supabase nfc-redirect-api) | T011 |
 | DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
-| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (NO-GO→GO tras B1–B5: B1 en curso; B2–B5 config prod del usuario) | T050–T052, T054 |
-| DQR-T058 | Regresión + smoke prod | qa | BACKLOG | T055, T057 |
+| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (B1, B2, B5 y N1 cerrados · falta B3 allowlist Auth + B4 platform admin) | T050–T052, T054 |
+| DQR-T058 | Regresión + smoke prod | qa | IN_PROGRESS (smoke prod: healthz 200 db ok, /r 404, web /login 200 con cabeceras) | T055, T057 |
 
 ## Backlog abierto por revisiones
 | Origen | Pendiente | Decide |
