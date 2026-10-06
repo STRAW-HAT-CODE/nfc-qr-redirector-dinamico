@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -45,15 +46,29 @@ app.include_router(redirect.router)
 _DB_PING_TIMEOUT_S = 1.0
 
 
+_DB_PING_TTL_S = 10.0
+# (instante monotónico, resultado) del último ping, por instancia; evita amplificar la carga.
+_db_ping_cache: tuple[float, bool] | None = None
+
+
 async def _db_ok(request: Request) -> bool:
-    """Ping barato: resolve_link de un slug inexistente (no escribe ni genera eventos)."""
+    """Ping barato: resolve_link de un slug inexistente (no escribe ni genera eventos).
+
+    El resultado se cachea 10 s por instancia.
+    """
+    global _db_ping_cache
+    now = time.monotonic()
+    if _db_ping_cache is not None and now - _db_ping_cache[0] < _DB_PING_TTL_S:
+        return _db_ping_cache[1]
     try:
         client = request.app.state.service_client
         async with asyncio.timeout(_DB_PING_TIMEOUT_S):
             await ServiceDB(client).rpc("resolve_link", {"p_slug": "healthz-probe"})
+        ok = True
     except Exception:
-        return False
-    return True
+        ok = False
+    _db_ping_cache = (now, ok)
+    return ok
 
 
 @app.get("/healthz")

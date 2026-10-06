@@ -77,6 +77,9 @@ def setup_logging(settings: Settings | None = None) -> None:
     root.addHandler(handler)
     # uvicorn ya imprime su propio access log con IP; el nuestro lo sustituye.
     logging.getLogger("uvicorn.access").disabled = True
+    # httpx/httpcore loguean cada petición a PostgREST en INFO (URL incluida): ruido.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
 
 
 access_logger = logging.getLogger("dqr.access")

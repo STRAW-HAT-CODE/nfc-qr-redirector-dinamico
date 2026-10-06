@@ -8,11 +8,17 @@ import pytest
 import respx
 from fastapi.testclient import TestClient
 
+import app.main as main_module
 from app.core import logging as dqr_logging
 from app.core.config import get_settings
 from app.main import app
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def _reset_db_ping_cache() -> None:
+    main_module._db_ping_cache = None
 
 
 def _access(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
@@ -133,3 +139,23 @@ def test_sentry_before_send_strips_sensitive() -> None:
 
 def test_init_sentry_disabled_without_dsn() -> None:
     assert dqr_logging.init_sentry(get_settings()) is False
+
+
+def test_healthz_db_ping_cached_10s(monkeypatch: pytest.MonkeyPatch) -> None:
+    now = [1000.0]
+    monkeypatch.setattr(main_module.time, "monotonic", lambda: now[0])
+    with respx.mock(base_url="https://db.test/rest/v1") as mock:
+        route = mock.post("/rpc/resolve_link").mock(return_value=httpx.Response(200, json=[]))
+        app.state.service_client = httpx.AsyncClient(base_url="https://db.test/rest/v1")
+        for _ in range(5):
+            assert client.get("/healthz").json()["db"] == "ok"
+        assert route.call_count == 1
+        now[0] += 10.5
+        client.get("/healthz")
+        assert route.call_count == 2
+
+
+def test_setup_logging_quiets_httpx() -> None:
+    dqr_logging.setup_logging(get_settings())
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("httpcore").level == logging.WARNING
