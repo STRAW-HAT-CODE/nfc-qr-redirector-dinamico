@@ -53,7 +53,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T031 | Migración qr_designs + bucket | db-architect | IN_REVIEW (PR #16 · seguridad APPROVED, ajustes) | T018 |
 | DQR-T032 | API diseño y descargas | qr-nfc | BACKLOG | T030, T031 |
 | DQR-T033 | Plantillas + Canva | qr-nfc | BACKLOG | T032 |
-| DQR-T034 | Migración nfc_tags | db-architect | DONE (PR #15 · seguridad APPROVED · CI verde) | T018 |
+| DQR-T034 | Migración nfc_tags | db-architect | TESTING (PR #15 fusionado · seguridad APPROVED) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | TESTING (PR #24 fusionado) | T034, T021 |
 | DQR-T036 | Tests de QR | qa | BACKLOG | T032 |
 
