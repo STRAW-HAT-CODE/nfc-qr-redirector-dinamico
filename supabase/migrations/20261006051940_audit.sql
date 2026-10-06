@@ -3,23 +3,26 @@
 -- organizaciones.
 -- Módulo DQR-08 · docs/03-modelo-datos.md (audit_log) · docs/06-seguridad.md (H6)
 --
--- Fase: EXPAND (solo crea objetos nuevos; depende de tenancy y links).
+-- Fase: EXPAND (solo crea objetos nuevos; depende de tenancy, links,
+-- nfc_tags y qr_designs).
 --
 -- Decisiones:
 --   * Una fila por cambio de fila (triggers AFTER ROW). Función genérica
 --     private.audit_row() parametrizada con argumentos del trigger; la llaman
---     dynamic_links, memberships y organizations (esta última solo para
---     cambios de name, plan y status, como pide la tarea).
+--     dynamic_links, memberships, nfc_tags, qr_designs y organizations (esta
+--     última solo para cambios de name, plan y status, como pide la tarea).
 --   * actor = auth.uid() (DEFAULT de la columna): el usuario del JWT; NULL
 --     cuando escribe service_role, un job o postgres (no hay `sub`).
 --   * action = '<entidad>.<verbo>':
 --       INSERT → created · DELETE → deleted
 --       UPDATE → el primer verbo específico cuya columna cambió
 --                (link.destination_changed, link.status_changed,
---                 member.role_changed, org.status_changed, org.plan_changed,
+--                 member.role_changed, nfc_tag.renamed, nfc_tag.moved,
+--                 nfc_tag.uid_changed, org.status_changed, org.plan_changed,
 --                 org.renamed); si ninguna, <entidad>.updated.
---     entity = 'link' | 'member' | 'org'; entity_id = id del enlace, user_id
---     de la membresía (la org ya está en org_id) o id de la org.
+--     entity = 'link' | 'member' | 'nfc_tag' | 'qr_design' | 'org';
+--     entity_id = id del enlace / etiqueta / org, user_id de la membresía (la
+--     org ya está en org_id) o link_id del diseño (es su PK).
 --   * diff = { columna: { "old": …, "new": … } } solo con las columnas que
 --     cambiaron. INSERT: old = null; DELETE: new = null (así el borrado de un
 --     enlace conserva su último destino, H6 de T018). Se excluyen siempre la
@@ -32,7 +35,10 @@
 --     un trigger rechaza UPDATE/DELETE/TRUNCATE también a postgres. Una futura
 --     purga por retención necesitará su propia migración (y revisión).
 --   * RLS: leen admin+ de la org y platform admin. Sin políticas de escritura;
---     solo escribe private.audit_row() (SECURITY DEFINER).
+--     solo escribe private.audit_row() (SECURITY DEFINER). La política es por
+--     conjunto (private.my_admin_org_ids(), evaluada una vez por consulta) y no
+--     fila a fila: con has_org_role por fila un usuario sin org forzaba un
+--     recorrido completo de la tabla vía PostgREST (sec-T052 H1).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -203,18 +209,18 @@ create trigger organizations_audit
     'org', 'id', 'id', 'name,plan,status', '',
     'status:status_changed,plan:plan_changed,name:renamed');
 
--- nfc_tags (DQR-T034) y qr_designs aún no existen en main. Al crearlas, su
--- migración debe enchufarlas así (ajustando columnas excluidas y verbos):
---
--- create trigger nfc_tags_audit
---   after insert or update or delete on public.nfc_tags
---   for each row execute function private.audit_row(
---     'nfc_tag', 'id', 'org_id', '*', '', 'link_id:link_changed,status:status_changed');
---
--- create trigger qr_designs_audit
---   after insert or update or delete on public.qr_designs
---   for each row execute function private.audit_row(
---     'qr_design', 'id', 'org_id', '*', '', '');
+-- nfc_tags: entity_id = id; link_id (inmutable) aparece en created/deleted.
+create trigger nfc_tags_audit
+  after insert or update or delete on public.nfc_tags
+  for each row execute function private.audit_row(
+    'nfc_tag', 'id', 'org_id', '*', '',
+    'label:renamed,location:moved,uid:uid_changed');
+
+-- qr_designs: la PK es link_id (no hay columna id).
+create trigger qr_designs_audit
+  after insert or update or delete on public.qr_designs
+  for each row execute function private.audit_row(
+    'qr_design', 'link_id', 'org_id', '*', '', '');
 
 -- -----------------------------------------------------------------------------
 -- Privilegios (explícitos; RLS filtra filas). Nadie escribe salvo los triggers.
@@ -227,11 +233,25 @@ grant select on public.audit_log to authenticated, service_role;
 -- -----------------------------------------------------------------------------
 alter table public.audit_log enable row level security;
 
+-- Orgs donde el usuario es admin+ (org_role: viewer < editor < admin < owner).
+-- Por conjunto (sec-T052 H1): se evalúa una vez por consulta (hashed SubPlan).
+create or replace function private.my_admin_org_ids()
+returns setof uuid
+language sql stable security definer set search_path = '' as $$
+  select m.org_id from public.memberships m
+  where m.user_id = (select auth.uid()) and m.role in ('admin', 'owner')
+$$;
+comment on function private.my_admin_org_ids() is
+  'org_id donde auth.uid() es admin u owner. Para RLS por conjunto. DQR-T052 (sec H1).';
+alter function private.my_admin_org_ids() owner to postgres;
+revoke execute on function private.my_admin_org_ids() from public, anon;
+grant execute on function private.my_admin_org_ids() to authenticated;
+
 -- admin+ de la org y platform admin. Sin políticas de INSERT/UPDATE/DELETE.
 create policy audit_log_select
   on public.audit_log for select
   to authenticated
   using (
-    private.has_org_role(org_id, 'admin')
+    org_id in (select private.my_admin_org_ids())
     or (select private.is_platform_admin())
   );

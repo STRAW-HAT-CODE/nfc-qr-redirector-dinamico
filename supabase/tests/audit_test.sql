@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(78);
+select plan(99);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres, sin JWT → actor NULL)
@@ -35,7 +35,9 @@ insert into public.memberships (org_id, user_id, role) values
 
 insert into public.dynamic_links (id, org_id, slug, name, destination_url) values
   ('b0000000-0000-0000-0000-000000000001', '0000000b-0000-0000-0000-000000000000',
-   'BBBBBB1', 'Link B', 'https://b.example.com/');
+   'BBBBBB1', 'Link B', 'https://b.example.com/'),
+  ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000',
+   'AAAAAA1', 'Link A', 'https://a.example.com/');
 
 -- Simula una petición con el JWT de un usuario.
 create function pg_temp.login(p_uid uuid) returns void language plpgsql as $$
@@ -123,9 +125,33 @@ select ok(
   and not has_function_privilege('anon', 'private.audit_row()', 'execute'),
   'anon/authenticated no ejecutan audit_row');
 
+-- sec-T052 H1: RLS por conjunto, no fila a fila.
+select is(
+  (select p.prosecdef from pg_proc p where p.oid = 'private.my_admin_org_ids()'::regprocedure),
+  true, 'my_admin_org_ids es SECURITY DEFINER');
+select is(
+  (select p.proconfig from pg_proc p where p.oid = 'private.my_admin_org_ids()'::regprocedure),
+  array['search_path=""'], 'my_admin_org_ids con search_path vacío');
+select ok(
+  not has_function_privilege('anon', 'private.my_admin_org_ids()', 'execute')
+  and has_function_privilege('authenticated', 'private.my_admin_org_ids()', 'execute'),
+  'my_admin_org_ids: authenticated sí, anon no');
+select ok(
+  (select qual from pg_policies
+   where schemaname = 'public' and tablename = 'audit_log' and policyname = 'audit_log_select')
+    ~ 'my_admin_org_ids' ,
+  'audit_log_select usa my_admin_org_ids()');
+select ok(
+  (select qual from pg_policies
+   where schemaname = 'public' and tablename = 'audit_log' and policyname = 'audit_log_select')
+    !~ 'has_org_role',
+  'audit_log_select no evalúa has_org_role fila a fila');
+
 select has_trigger('public', 'dynamic_links', 'dynamic_links_audit', 'trigger en dynamic_links');
 select has_trigger('public', 'memberships', 'memberships_audit', 'trigger en memberships');
 select has_trigger('public', 'organizations', 'organizations_audit', 'trigger en organizations');
+select has_trigger('public', 'nfc_tags', 'nfc_tags_audit', 'trigger en nfc_tags');
+select has_trigger('public', 'qr_designs', 'qr_designs_audit', 'trigger en qr_designs');
 select has_trigger('public', 'audit_log', 'audit_log_append_only', 'guarda append-only');
 select has_trigger('public', 'audit_log', 'audit_log_no_truncate', 'guarda contra TRUNCATE');
 
@@ -358,8 +384,133 @@ select is(
   'service_role reactiva la org → actor NULL');
 
 -- -----------------------------------------------------------------------------
+-- Etiquetas NFC y diseños QR
+-- -----------------------------------------------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+insert into public.nfc_tags (link_id, org_id, label, location, uid)
+values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000',
+        'Mesa 1', 'Sala', '04:a2:5b:1c:2d:3e:4f');
+select pg_temp.logout();
+
+create temp table t_tag as select id::text as id from public.nfc_tags where label = 'Mesa 1';
+
+select is(
+  (select row(org_id, actor, action, entity, diff) from pg_temp.last_audit('nfc_tag', (select id from t_tag))),
+  row('0000000a-0000-0000-0000-000000000000'::uuid, '00000000-0000-0000-0000-0000000000e1'::uuid,
+      'nfc_tag.created'::text, 'nfc_tag'::text,
+      '{"label":    {"old": null, "new": "Mesa 1"},
+        "location": {"old": null, "new": "Sala"},
+        "uid":      {"old": null, "new": "04A25B1C2D3E4F"},
+        "link_id":  {"old": null, "new": "a0000000-0000-0000-0000-000000000001"}}'::jsonb),
+  'alta de etiqueta NFC → nfc_tag.created con valores normalizados');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+update public.nfc_tags set label = 'Mesa 2' where label = 'Mesa 1';
+select pg_temp.logout();
+select is(
+  (select row(action, diff) from pg_temp.last_audit('nfc_tag', (select id from t_tag))),
+  row('nfc_tag.renamed'::text, '{"label": {"old": "Mesa 1", "new": "Mesa 2"}}'::jsonb),
+  'cambio de label → nfc_tag.renamed');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+update public.nfc_tags set location = 'Terraza' where label = 'Mesa 2';
+select pg_temp.logout();
+select is(
+  (select row(action, diff) from pg_temp.last_audit('nfc_tag', (select id from t_tag))),
+  row('nfc_tag.moved'::text, '{"location": {"old": "Sala", "new": "Terraza"}}'::jsonb),
+  'cambio de location → nfc_tag.moved');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+update public.nfc_tags set uid = null where label = 'Mesa 2';
+select pg_temp.logout();
+select is(
+  (select row(action, diff) from pg_temp.last_audit('nfc_tag', (select id from t_tag))),
+  row('nfc_tag.uid_changed'::text, '{"uid": {"old": "04A25B1C2D3E4F", "new": null}}'::jsonb),
+  'cambio de uid → nfc_tag.uid_changed');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+insert into public.qr_designs (link_id, org_id, fg)
+values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', '#112233');
+select pg_temp.logout();
+
+select is(
+  (select row(org_id, actor, action, entity, diff)
+   from pg_temp.last_audit('qr_design', 'a0000000-0000-0000-0000-000000000001')),
+  row('0000000a-0000-0000-0000-000000000000'::uuid, '00000000-0000-0000-0000-0000000000e1'::uuid,
+      'qr_design.created'::text, 'qr_design'::text,
+      '{"fg":        {"old": null, "new": "#112233"},
+        "bg":        {"old": null, "new": "#FFFFFF"},
+        "frame":     {"old": null, "new": "none"},
+        "ecc_level": {"old": null, "new": "M"},
+        "style":     {"old": null, "new": {}}}'::jsonb),
+  'alta de diseño QR → qr_design.created (entity_id = link_id, sin updated_at)');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+update public.qr_designs set fg = '#000000' where link_id = 'a0000000-0000-0000-0000-000000000001';
+select pg_temp.logout();
+select is(
+  (select row(action, diff) from pg_temp.last_audit('qr_design', 'a0000000-0000-0000-0000-000000000001')),
+  row('qr_design.updated'::text, '{"fg": {"old": "#112233", "new": "#000000"}}'::jsonb),
+  'cambio de diseño → qr_design.updated sin updated_at');
+
+-- Borrar el enlace audita también el borrado en cascada de etiqueta y diseño.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a3');
+delete from public.dynamic_links where id = 'a0000000-0000-0000-0000-000000000001';
+select pg_temp.logout();
+
+select is(
+  (select row(action, actor, diff -> 'label')
+   from pg_temp.last_audit('nfc_tag', (select id from t_tag))),
+  row('nfc_tag.deleted'::text, '00000000-0000-0000-0000-0000000000a3'::uuid,
+      '{"old": "Mesa 2", "new": null}'::jsonb),
+  'borrar el enlace → nfc_tag.deleted en cascada');
+select is(
+  (select row(action, actor, diff -> 'fg')
+   from pg_temp.last_audit('qr_design', 'a0000000-0000-0000-0000-000000000001')),
+  row('qr_design.deleted'::text, '00000000-0000-0000-0000-0000000000a3'::uuid,
+      '{"old": "#000000", "new": null}'::jsonb),
+  'borrar el enlace → qr_design.deleted en cascada');
+
+-- -----------------------------------------------------------------------------
 -- Lectura (RLS): admin+ y platform admin
 -- -----------------------------------------------------------------------------
+select pg_temp.login('00000000-0000-0000-0000-0000000000a3');
+select is(array(select private.my_admin_org_ids()),
+  array['0000000a-0000-0000-0000-000000000000'::uuid], 'my_admin_org_ids: admin de A → {A}');
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select is(array(select private.my_admin_org_ids()),
+  array['0000000a-0000-0000-0000-000000000000'::uuid], 'my_admin_org_ids: owner de A → {A}');
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+select is(array(select private.my_admin_org_ids()), array[]::uuid[],
+  'my_admin_org_ids: editor → vacío');
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select is(array(select private.my_admin_org_ids()), array[]::uuid[],
+  'my_admin_org_ids: viewer → vacío');
+select pg_temp.logout();
+
+-- Un extraño (como un GET de PostgREST): filtro por conjunto (hashed SubPlan),
+-- sin llamadas a has_org_role por fila.
+create function pg_temp.explain_text(p_sql text) returns text language plpgsql as $$
+declare v_line text; v_out text := '';
+begin
+  for v_line in execute 'explain ' || p_sql loop
+    v_out := v_out || v_line || E'\n';
+  end loop;
+  return v_out;
+end $$;
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000cc');
+select ok(
+  pg_temp.explain_text('select * from public.audit_log order by id desc limit 20') ~ 'hashed SubPlan',
+  'extraño: la RLS se resuelve con un hashed SubPlan (una vez por consulta)');
+select ok(
+  pg_temp.explain_text('select * from public.audit_log order by id desc limit 20') !~ 'has_org_role',
+  'extraño: el plan no llama a has_org_role por fila');
+select pg_temp.logout();
+
 select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
 select is((select count(*) from public.audit_log), 0::bigint, 'viewer no lee audit_log');
 select pg_temp.logout();
