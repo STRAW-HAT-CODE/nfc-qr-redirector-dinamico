@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     public_redirect_base_url: str = ""
     ip_hash_salt: str = ""
+    # Proxies confiables delante de la API (x-forwarded-for). 0 = ignorarlo; Vercel = 1.
+    trusted_proxy_hops: int = 0
 
 
 @lru_cache

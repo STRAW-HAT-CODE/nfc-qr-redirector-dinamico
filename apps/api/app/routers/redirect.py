@@ -15,6 +15,7 @@ from urllib.parse import quote, urlsplit
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 
 from app.service_db import ServiceDB
+from app.services.scan_logger import log_scan
 from app.services.slug import is_valid_slug
 
 logger = logging.getLogger(__name__)
@@ -92,8 +93,8 @@ def _is_live(link: dict[str, Any], now: datetime) -> bool:
 async def on_scan(
     link: dict[str, Any], channel: Channel, tag: str | None, request: Request
 ) -> None:
-    """Hook del registro de escaneo. Lo implementa DQR-T023; hoy no hace nada."""
-    return None
+    """Hook del registro de escaneo (DQR-T023): delega en el scan_logger."""
+    await log_scan(link, channel.value, tag, request)
 
 
 async def _safe_on_scan(

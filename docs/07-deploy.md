@@ -30,6 +30,9 @@ openssl rand -hex 32
 ```
 Usa un valor distinto por entorno. Rotarlo invalida la correlación de hashes previos.
 
+### `TRUSTED_PROXY_HOPS`
+Número de proxies confiables delante de la API. Con `0` (por defecto, local) se usa la IP de la conexión y se ignoran `x-forwarded-for` y `x-vercel-ip-country`. En Vercel, **1** en Preview y Production: la plataforma pone `x-forwarded-for` (se toma la entrada N desde la derecha) y `x-vercel-ip-country`. Con `0` en Vercel, los únicos salen en 1 o `ip_hash` null.
+
 ### Claves
 Las claves de staging y production viven únicamente en las env vars de Vercel; nunca en el repo, issues, PRs ni logs.
 
@@ -41,6 +44,7 @@ SUPABASE_SERVICE_ROLE_KEY=      # solo servidor
 SUPABASE_JWT_SECRET=
 PUBLIC_REDIRECT_BASE_URL=       # https://<dominio-corto>
 IP_HASH_SALT=
+TRUSTED_PROXY_HOPS=             # 0 local · 1 en Vercel (Preview y Production)
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 NEXT_PUBLIC_API_URL=
