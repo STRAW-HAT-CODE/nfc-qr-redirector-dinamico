@@ -11,6 +11,28 @@
 ## Entornos
 `local` (Supabase CLI) → `staging` → `production`. Migraciones solo desde `supabase/migrations/`; nunca cambios manuales en producción.
 
+| | local | staging | production |
+|---|---|---|---|
+| Dónde vive | Docker vía Supabase CLI (`http://127.0.0.1:54321`) | Proyecto Supabase `huufgmpzusmzmujldxol` (`nfc-redirect-api`, us-east-2, org Alexdev, `https://huufgmpzusmzmujldxol.supabase.co`) + Vercel (preview) | Proyecto Supabase propio + Vercel (`main`) |
+| Cómo se crea | `supabase start` | Proyecto existente, designado como staging por el usuario (2026-10-05); enlazar con `supabase link --project-ref huufgmpzusmzmujldxol` | Solo con OK del usuario |
+| Quién migra | db-architect, desde `supabase/migrations/` (`supabase db reset`) | db-architect, desde `supabase/migrations/` (`supabase db push`) | db-architect, desde `supabase/migrations/`, **solo con OK del usuario** y aprobación de security-reviewer |
+| Secretos | `.env` local (git-ignorado) | Env vars de Vercel | Env vars de Vercel |
+
+### Rellenar `.env` por entorno
+1. `cp .env.example .env`.
+2. **Local:** ejecuta `supabase start` y copia API URL, `anon key`, `service_role key` y `JWT secret` a las variables correspondientes. Las `NEXT_PUBLIC_*` repiten los valores públicos.
+3. **Staging/production:** toma los valores en el dashboard del proyecto (Settings → API) y cárgalos como env vars en Vercel (Project → Settings → Environment Variables), por entorno (Preview = staging, Production = production). No se escriben en archivos del repo.
+4. `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET` e `IP_HASH_SALT` son **solo servidor**: nunca con prefijo `NEXT_PUBLIC_` ni en código de cliente.
+
+### Generar `IP_HASH_SALT`
+```
+openssl rand -hex 32
+```
+Usa un valor distinto por entorno. Rotarlo invalida la correlación de hashes previos.
+
+### Claves
+Las claves de staging y production viven únicamente en las env vars de Vercel; nunca en el repo, issues, PRs ni logs.
+
 ## Variables (`.env.example`)
 ```
 SUPABASE_URL=
