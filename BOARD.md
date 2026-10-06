@@ -74,13 +74,13 @@ AGENT-10 scribe            Docs y tablero                          activo
 ## Sprint 4 — Seguridad, plataforma, producción
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
-| DQR-T050 | Rate limiting | backend-api | TESTING (PR #27 fusionado) | T023 |
+| DQR-T050 | Rate limiting | backend-api | DONE (qa PASS) | T023 |
 | DQR-T051 | Política de URLs / abuso | security-reviewer | BACKLOG | T020 |
-| DQR-T052 | audit_log | db-architect | IN_REVIEW (PR #23 · segunda revisión de seguridad) | T018 |
+| DQR-T052 | audit_log | db-architect | TESTING (PR #23 fusionado · seguridad APPROVED) | T018 |
 | DQR-T053 | Planes y límites | db-architect | IN_REVIEW (PR #30 · seguridad) | T013 |
 | DQR-T054 | Consola Monky | frontend | BACKLOG | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
-| DQR-T056 | Observabilidad | devops | BACKLOG | T055 |
+| DQR-T056 | Observabilidad | devops | IN_PROGRESS | T055 |
 | DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | BACKLOG | T050–T052, T054 |
 | DQR-T058 | Regresión + smoke prod | qa | BACKLOG | T055, T057 |
 
