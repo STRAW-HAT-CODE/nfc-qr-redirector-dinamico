@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.core.config import get_settings
 from app.main import app
 from app.services import scan_logger
-from app.services.scan_logger import hash_ip, parse_country, referer_origin
+from app.services.scan_logger import _norm_ip, hash_ip, parse_country, referer_origin
 
 BASE = "https://proj.supabase.co"
 RESOLVE = f"{BASE}/rest/v1/rpc/resolve_link"
@@ -50,7 +50,7 @@ def _env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    with TestClient(app, follow_redirects=False) as c:
+    with TestClient(app, follow_redirects=False, client=("203.0.113.5", 50000)) as c:
         yield c
 
 
@@ -183,10 +183,58 @@ def test_country(raw: str, expected: str | None) -> None:
 
 
 @respx.mock
-def test_country_header(client: TestClient) -> None:
+def test_country_header_invalid(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
     rec = setup_routes()
     client.get(f"/r/{SLUG}", headers=UA | {"x-vercel-ip-country": "ZZZ"})
     assert payload(rec)["p_country"] is None
+
+
+@respx.mock
+def test_country_header_used_only_with_trusted_proxy(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rec = setup_routes()
+    client.get(f"/r/{SLUG}", headers=UA | {"x-vercel-ip-country": "EC"})
+    assert payload(rec)["p_country"] is None  # 0 hops: la cabecera la controla el cliente
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
+    rec2 = setup_routes()
+    client.get(f"/r/{SLUG}", headers=UA | {"x-vercel-ip-country": "EC"})
+    assert json.loads(rec2.calls.last.request.content)["p_country"] == "EC"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("1.2.3.4", "1.2.3.4"),
+        ("::ffff:1.2.3.4", "1.2.3.4"),
+        ("2001:DB8::1", "2001:db8::1"),
+        ("2001:db8:0:0::1", "2001:db8::1"),
+        ("1.2.3.4:5555", None),
+        ("garbage", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_norm_ip(raw: str | None, expected: str | None) -> None:
+    assert _norm_ip(raw) == expected
+
+
+@respx.mock
+def test_ipv6_variants_same_hash_and_garbage_null(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TRUSTED_PROXY_HOPS", "1")
+    get_settings.cache_clear()
+    rec = setup_routes()
+    for xff in ("2001:DB8::1", "2001:db8:0:0::1", "garbage"):
+        client.get(f"/r/{SLUG}", headers=UA | {"x-forwarded-for": xff})
+    a, b, c = (json.loads(x.request.content)["p_ip_hash"] for x in rec.calls)
+    assert a == b
+    assert a is not None
+    assert c is None
 
 
 @respx.mock

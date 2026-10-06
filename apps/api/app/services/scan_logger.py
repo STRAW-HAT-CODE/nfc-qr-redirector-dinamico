@@ -17,6 +17,7 @@ Privacidad:
 import asyncio
 import hashlib
 import hmac
+import ipaddress
 import logging
 import re
 from datetime import UTC, datetime
@@ -77,13 +78,26 @@ def referer_origin(value: str | None) -> str | None:
     return origin if len(origin) <= _MAX_REFERER else None
 
 
+def _norm_ip(raw: str | None) -> str | None:
+    """IP canónica (IPv6 comprimida, IPv4 mapeada → IPv4); basura o con puerto → None."""
+    if not raw:
+        return None
+    try:
+        ip = ipaddress.ip_address(raw.strip())
+    except ValueError:
+        return None
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        ip = ip.ipv4_mapped
+    return ip.compressed
+
+
 def client_ip(request: Request, trusted_hops: int) -> str | None:
-    direct = request.client.host if request.client else None
+    direct = _norm_ip(request.client.host if request.client else None)
     if trusted_hops <= 0:
         return direct
     chain = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
     if len(chain) >= trusted_hops:
-        return chain[-trusted_hops]
+        return _norm_ip(chain[-trusted_hops])
     return direct
 
 
@@ -111,7 +125,12 @@ def build_payload(
         "p_org_id": link["org_id"],
         "p_channel": channel,
         "p_tag_id": parse_tag_id(tag, channel),
-        "p_country": parse_country(request.headers.get("x-vercel-ip-country")),
+        # Sin proxy confiable la cabecera la controla el cliente: se ignora.
+        "p_country": (
+            parse_country(request.headers.get("x-vercel-ip-country"))
+            if settings.trusted_proxy_hops >= 1
+            else None
+        ),
         "p_device": None,
         "p_os": None,
         "p_browser": None,
