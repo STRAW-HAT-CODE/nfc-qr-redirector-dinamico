@@ -18,6 +18,7 @@ import { DownloadMenu } from "./download-menu";
 import { FramePicker } from "./frame-picker";
 import { LogoUpload } from "./logo-upload";
 import { QrPreview } from "./qr-preview";
+import { QuickDesigns } from "./quick-designs";
 import { TemplatesGallery } from "./templates-gallery";
 
 interface Draft {
@@ -31,9 +32,12 @@ interface Draft {
 }
 
 const toDraft = (d: QrDesign): Draft => ({
-  fg: d.fg, bg: d.bg, ecc_level: d.has_logo ? "H" : d.ecc_level, frame: d.frame,
+  fg: d.fg, bg: d.bg, ecc_level: d.has_logo || d.style?.logo_preset ? "H" : d.ecc_level, frame: d.frame,
   frame_text: d.frame_text ?? "", module_style: d.module_style, margin: d.margin,
 });
+
+const PRESET_GOOGLE = { fg: "#000000", bg: "#FFFFFF", frame: "none", module_style: "square" } as const;
+const GOOGLE_G = "/presets/google-g.svg";
 
 const ECC: Record<EccLevel, string> = { L: "L · 7 %", M: "M · 15 %", Q: "Q · 25 %", H: "H · 30 %" };
 const STYLES: Record<ModuleStyle, string> = { square: "Cuadrados", rounded: "Redondeados", dots: "Puntos" };
@@ -53,11 +57,31 @@ export function QrDesigner({
   const base = toDraft(saved);
   const dirty = (Object.keys(draft) as (keyof Draft)[]).some((k) => draft[k] !== base[k]);
   const locked = !canEdit || pending;
+  const preset = saved.style?.logo_preset ?? null;
+  const [presetBusy, startPreset] = useTransition();
+
+  function applyPreset(on: boolean) {
+    setError(undefined);
+    startPreset(async () => {
+      const input = on
+        ? { ...PRESET_GOOGLE, ecc_level: "H" as const, margin: saved.margin, frame_text: null, style: { logo_preset: "google" as const } }
+        : { ...toDraft(saved), frame_text: saved.frame === "label" ? saved.frame_text : null, style: { logo_preset: null } };
+      const res = await saveDesignAction(linkId, input);
+      if (res.ok) {
+        setSaved(res.design);
+        setDraft(toDraft(res.design));
+        toast.success(on ? "Diseño «Reseñas de Google» aplicado" : "Diseño rápido quitado");
+      } else setError(res.message);
+    });
+  }
 
   function save() {
     setError(undefined);
     start(async () => {
-      const res = await saveDesignAction(linkId, { ...draft, frame_text: draft.frame === "label" ? draft.frame_text : null });
+      const res = await saveDesignAction(linkId, {
+        ...draft, frame_text: draft.frame === "label" ? draft.frame_text : null,
+        ...(preset ? { style: { logo_preset: preset } } : {}),
+      });
       if (res.ok) {
         setSaved(res.design);
         setDraft(toDraft(res.design));
@@ -85,9 +109,9 @@ export function QrDesigner({
           </CardHeader>
           <CardContent className="grid justify-items-center gap-4">
             <QrPreview
-              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} ecc={saved.has_logo ? "H" : draft.ecc_level}
+              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} ecc={saved.has_logo || preset ? "H" : draft.ecc_level}
               frame={draft.frame} frameText={draft.frame_text} moduleStyle={draft.module_style}
-              margin={draft.margin} hasLogo={saved.has_logo} logoUrl={logoUrl}
+              margin={draft.margin} hasLogo={saved.has_logo || !!preset} logoUrl={preset ? GOOGLE_G : logoUrl}
             />
             <p className="max-w-sm text-center text-xs text-muted-foreground">
               Aproximación en vivo. Las descargas usan el diseño guardado.
@@ -115,6 +139,9 @@ export function QrDesigner({
             <ColorPicker label="Color del QR" value={draft.fg} onChange={(v) => set("fg", v)} disabled={locked} />
             <ColorPicker label="Fondo" value={draft.bg} onChange={(v) => set("bg", v)} disabled={locked} />
           </div>
+          {canEdit ? (
+            <QuickDesigns active={!!preset} onApply={() => applyPreset(true)} onRemove={() => applyPreset(false)} disabled={pending} busy={presetBusy} />
+          ) : null}
           <ContrastWarning fg={draft.fg} bg={draft.bg} serverWarnings={saved.warnings} />
 
           <div className="grid gap-1.5">
@@ -129,14 +156,14 @@ export function QrDesigner({
 
           <div className="grid gap-1.5">
             <Label htmlFor="ecc">Corrección de errores</Label>
-            <Select value={draft.ecc_level} onValueChange={(v) => set("ecc_level", v as EccLevel)} disabled={locked || saved.has_logo}>
+            <Select value={draft.ecc_level} onValueChange={(v) => set("ecc_level", v as EccLevel)} disabled={locked || saved.has_logo || !!preset}>
               <SelectTrigger id="ecc" className="w-full" aria-describedby="ecc-help"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(ECC).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
             <p id="ecc-help" className="text-xs text-muted-foreground">
-              {saved.has_logo
+              {saved.has_logo || preset
                 ? "Bloqueado en H: el logo tapa parte del código y necesita la máxima corrección."
                 : "Más corrección tolera más daño, pero el QR es más denso."}
             </p>

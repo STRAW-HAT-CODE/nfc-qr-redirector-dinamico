@@ -14,6 +14,7 @@ export interface DesignInput {
   module_style: QrDesign["module_style"];
   margin: number;
   frame_text: string | null;
+  style?: QrDesign["style"];
 }
 
 export async function saveDesignAction(linkId: string, v: DesignInput): Promise<SaveResult> {

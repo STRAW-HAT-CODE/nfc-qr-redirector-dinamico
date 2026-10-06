@@ -167,6 +167,11 @@ export type EccLevel = "L" | "M" | "Q" | "H";
 export type QrFrame = "none" | "simple" | "rounded" | "label";
 export type ModuleStyle = "square" | "rounded" | "dots";
 
+export type LogoPreset = "google";
+export interface QrDesignStyle {
+  logo_preset?: LogoPreset | null;
+}
+
 export interface QrDesign {
   link_id: string;
   fg: string;
@@ -177,6 +182,8 @@ export interface QrDesign {
   margin: number;
   frame_text: string | null;
   has_logo: boolean;
+  /** Estilo extra (T060). Opcional: la API antigua no lo devuelve. */
+  style?: QrDesignStyle | null;
   is_default: boolean;
   updated_at: string | null;
   warnings: string[];
