@@ -2,7 +2,9 @@
 -- DQR-T053 · Planes y límites: public.plans + límites aplicados en la BD
 -- Módulo DQR-09 · docs/03-modelo-datos.md (organizations.plan, limits) ·
 -- ADR-0006 (los límites de plan se hacen cumplir también en la BD) ·
--- backlog de seguridad T013 H5 (orgs por usuario) y T031 H2 (cuota de logos).
+-- backlog de seguridad T013 H5 (orgs por usuario). T031 H2 (cuota de objetos
+-- en el bucket logos) sigue abierto: max_logos cuenta diseños con logo, no
+-- objetos de Storage (sec-T053 H1, en backlog).
 --
 -- Fase: EXPAND. Crea public.plans, añade la FK organizations.plan → plans.code
 --   (antes valida que todas las orgs existentes tengan un plan del catálogo;
@@ -34,6 +36,10 @@
 --   * Exentos: platform admin y cualquier rol que no sea authenticated/anon
 --     (service_role, postgres: backend, migraciones, RPC SECURITY DEFINER como
 --     create_organization), igual que organizations_guard.
+--     Regla (sec-T053 H2): toda RPC SECURITY DEFINER futura que cree enlaces,
+--     miembros, etiquetas o diseños en nombre de un usuario debe llamar a
+--     private.enforce_plan_limit explícitamente o ser SECURITY INVOKER; si no,
+--     se salta los límites.
 --   * Carreras: el trigger es SECURITY INVOKER (current_user = rol real de la
 --     petición) y delega en private.enforce_plan_limit (SECURITY DEFINER, para
 --     contar todas las filas de la org sin RLS), que toma

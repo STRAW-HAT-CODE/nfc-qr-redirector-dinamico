@@ -22,9 +22,12 @@ insert into auth.users (id, email, aud, role) values
 
 insert into public.platform_admins (user_id) values ('00000000-0000-0000-0000-0000000000ff');
 
-insert into public.organizations (id, name, slug) values
-  ('0000000a-0000-0000-0000-000000000000', 'Org A', 'org-a'),
-  ('0000000b-0000-0000-0000-000000000000', 'Org B', 'org-b');
+-- DQR-T053: estos fixtures dan de alta como authenticated más miembros de los
+-- que permite free (3): las orgs nacen en business (como postgres, sin UPDATE
+-- para no generar filas de auditoría).
+insert into public.organizations (id, name, slug, plan) values
+  ('0000000a-0000-0000-0000-000000000000', 'Org A', 'org-a', 'business'),
+  ('0000000b-0000-0000-0000-000000000000', 'Org B', 'org-b', 'business');
 
 insert into public.memberships (org_id, user_id, role) values
   ('0000000a-0000-0000-0000-000000000000', '00000000-0000-0000-0000-0000000000a1', 'owner'),
@@ -351,7 +354,7 @@ select pg_temp.logout();
 select is(
   (select row(action, actor, diff) from pg_temp.last_audit('org', '0000000a-0000-0000-0000-000000000000')),
   row('org.plan_changed'::text, '00000000-0000-0000-0000-0000000000ff'::uuid,
-      '{"plan": {"old": "free", "new": "pro"}}'::jsonb),
+      '{"plan": {"old": "business", "new": "pro"}}'::jsonb),
   'platform admin cambia plan → org.plan_changed');
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000ff');
@@ -367,7 +370,7 @@ select is(
 
 -- slug/limits no se auditan; name sin cambio tampoco.
 select pg_temp.as_service();
-update public.organizations set slug = 'org-a-2', limits = '{"links": 5}', name = 'Org A2'
+update public.organizations set slug = 'org-a-2', limits = '{"max_links": 5}', name = 'Org A2'
   where id = '0000000a-0000-0000-0000-000000000000';
 select pg_temp.logout();
 
