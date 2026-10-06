@@ -75,7 +75,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
 | DQR-T050 | Rate limiting | backend-api | DONE (qa PASS) | T023 |
-| DQR-T051 | Política de URLs / abuso | security-reviewer | DONE (seguridad APPROVED · E2E OK · blocklist retroactiva en curso) | T020 |
+| DQR-T051 | Política de URLs / abuso | security-reviewer | TESTING (PR #36/#34 fusionados · seguridad APPROVED) | T020 |
 | DQR-T052 | audit_log | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T053 | Planes y límites | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T054 | Consola Monky | frontend | TESTING (API + UI fusionadas) | T043, T053 |
