@@ -85,7 +85,7 @@ export function QrDesigner({
           </CardHeader>
           <CardContent className="grid justify-items-center gap-4">
             <QrPreview
-              data={shortUrl} fg={draft.fg} bg={draft.bg} ecc={saved.has_logo ? "H" : draft.ecc_level}
+              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} ecc={saved.has_logo ? "H" : draft.ecc_level}
               frame={draft.frame} frameText={draft.frame_text} moduleStyle={draft.module_style}
               margin={draft.margin} hasLogo={saved.has_logo} logoUrl={logoUrl}
             />
