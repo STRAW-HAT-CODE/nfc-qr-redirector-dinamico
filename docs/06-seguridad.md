@@ -23,4 +23,12 @@ security-reviewer aprueba toda migración y registra hallazgos aquí.
 
 | Fecha | Tarea | Hallazgo | Estado |
 |---|---|---|---|
-| — | — | — | — |
+| 2026-10-05 | DQR-T013 | H1 MEDIA: el trigger del último owner permitía 0 owners en REPEATABLE READ → ahora se rechaza en RR (0A000) | Resuelto (6d560b4) |
+| 2026-10-05 | DQR-T013 | H2 MEDIA: faltaban tests (escritura en platform_admins, join ajeno no owner, anon, editor, inmutables) → plan(66) | Resuelto (6d560b4) |
+| 2026-10-05 | DQR-T013 | H3 BAJA: memberships.created_at falsificable → grant de INSERT por columnas | Resuelto (6d560b4) |
+| 2026-10-05 | DQR-T013 | H4 BAJA: borrar en Auth al último owner falla → definir el flujo (transferir o borrar la org) | Backlog / product |
+| 2026-10-05 | DQR-T013 | H5 BAJA: create_organization sin límite por usuario (RPC expuesta en PostgREST) | Backlog / product |
+| 2026-10-05 | DQR-T013 | H6 BAJA: un admin podía cambiar el slug de la org → inmutable salvo platform admin o service role | Resuelto (6d560b4) |
+| 2026-10-05 | DQR-T013 | H7 INFO: organizations_guard depende de current_user; ninguna RPC SECURITY DEFINER debe escribir plan/status/limits/slug desde la entrada del usuario | Info |
+| 2026-10-05 | DQR-T013 | H8 INFO: "Invitar" (docs/04) frente a añadir directamente un user_id; el error de FK revela si un UUID existe → DQR-T016 | Info |
+| 2026-10-05 | DQR-T013 | H9 INFO: org suspendida sin efecto en la RLS de tenancy → definir en DQR-09 | Info |
