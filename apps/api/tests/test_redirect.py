@@ -134,6 +134,23 @@ def test_suspended_link_is_unavailable_even_with_fallback(client: TestClient) ->
 
 
 @respx.mock
+def test_blocked_destination_is_unavailable_even_with_fallback(client: TestClient) -> None:
+    mock_rows([row(destination_blocked=True, fallback_url=FALLBACK)])
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 200
+    assert "location" not in r.headers
+    assert "no está disponible" in r.text
+    assert_safe(r)
+
+
+@respx.mock
+@pytest.mark.parametrize("flag", [False, None])
+def test_destination_not_blocked_redirects(client: TestClient, flag: bool | None) -> None:
+    mock_rows([row(destination_blocked=flag)])
+    assert client.get(f"/r/{SLUG}").status_code == 302
+
+
+@respx.mock
 def test_null_suspended_at_redirects(client: TestClient) -> None:
     mock_rows([row(suspended_at=None)])
     assert client.get(f"/r/{SLUG}").status_code == 302
