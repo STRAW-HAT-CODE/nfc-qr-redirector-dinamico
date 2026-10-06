@@ -30,7 +30,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 ## Sprint 1 — Fundaciones, tenancy, enlaces, redirector
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
-| DQR-T010 | Scaffold monorepo | devops | IN_PROGRESS (feat/DQR-T010-scaffold) | T005 |
+| DQR-T010 | Scaffold monorepo | devops | BLOCKED (PR #2 draft · TLS npm interceptado por FortiGate) | T005 |
 | DQR-T011 | CI | devops | BACKLOG | T010 |
 | DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | BACKLOG | T010, T012 |
