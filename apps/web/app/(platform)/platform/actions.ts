@@ -6,7 +6,7 @@ import {
   ApiError,
   adminBlockDomain,
   adminFindLink,
-  adminSetLinkStatus,
+  adminSuspendLink,
   adminUnblockDomain,
   adminUpdateOrg,
   type AdminLink,
@@ -112,15 +112,14 @@ export async function findLinkAction(slug: string): Promise<PlatformResult<Admin
   }
 }
 
-export async function setLinkStatusAction(
-  linkId: string,
-  status: "active" | "paused" | "archived",
-): Promise<PlatformResult> {
-  if (!UUID_RE.test(linkId) || !["active", "paused", "archived"].includes(status)) return { ok: false, message: "Datos no válidos." };
+export async function setLinkSuspendedAction(linkId: string, suspended: boolean, reason?: string): Promise<PlatformResult> {
+  if (!UUID_RE.test(linkId) || typeof suspended !== "boolean") return { ok: false, message: "Datos no válidos." };
+  const r = (reason ?? "").trim();
+  if (r.length > 500) return { ok: false, message: "El motivo no puede superar 500 caracteres." };
   try {
-    await adminSetLinkStatus(linkId, status);
+    await adminSuspendLink(linkId, suspended, suspended && r ? r : undefined);
   } catch (e) {
     return fail(e);
   }
-  return { ok: true, message: status === "active" ? "Enlace reactivado." : "Enlace suspendido." };
+  return { ok: true, message: suspended ? "Enlace suspendido." : "Enlace reactivado." };
 }

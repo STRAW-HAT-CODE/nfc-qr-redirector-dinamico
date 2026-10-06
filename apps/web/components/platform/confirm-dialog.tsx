@@ -8,12 +8,13 @@ import {
 } from "@/components/ui/dialog";
 
 export function ConfirmDialog({
-  open, onOpenChange, title, description, confirmLabel, destructive = true, pending, onConfirm,
+  open, onOpenChange, title, description, children, confirmLabel, destructive = true, pending, onConfirm,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description: React.ReactNode;
+  children?: React.ReactNode;
   confirmLabel: string;
   destructive?: boolean;
   pending: boolean;
@@ -26,6 +27,7 @@ export function ConfirmDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
+        {children}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>Cancelar</Button>
           <Button variant={destructive ? "destructive" : "default"} onClick={onConfirm} disabled={pending}>

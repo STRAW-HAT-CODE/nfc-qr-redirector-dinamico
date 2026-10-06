@@ -253,6 +253,8 @@ export interface AdminLink {
   name: string;
   destination_url: string;
   status: "active" | "paused" | "archived";
+  suspended_at: string | null;
+  suspended_reason: string | null;
   created_at: string;
 }
 
@@ -278,5 +280,9 @@ export const adminUnblockDomain = (domain: string) =>
 export const adminFindLink = (slug: string) =>
   api<AdminLink[]>(`/v1/admin/links?slug=${encodeURIComponent(slug)}`, { orgId: false });
 
-export const adminSetLinkStatus = (id: string, status: "active" | "paused" | "archived") =>
-  api<unknown>(`/v1/admin/links/${id}/status`, { method: "PATCH", body: { status }, orgId: false });
+export const adminSuspendLink = (id: string, suspended: boolean, reason?: string) =>
+  api<unknown>(`/v1/admin/links/${id}/suspend`, {
+    method: "PATCH",
+    body: reason ? { suspended, reason } : { suspended },
+    orgId: false,
+  });

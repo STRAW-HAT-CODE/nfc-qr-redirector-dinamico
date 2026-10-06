@@ -4,8 +4,9 @@ import { Ban, RotateCcw } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { setLinkStatusAction, setOrgStatusAction, type PlatformResult } from "@/app/(platform)/platform/actions";
+import { setLinkSuspendedAction, setOrgStatusAction, type PlatformResult } from "@/app/(platform)/platform/actions";
 import { ConfirmDialog } from "@/components/platform/confirm-dialog";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
 type Props =
@@ -16,6 +17,7 @@ type Props =
 export function SuspendAction(props: Props) {
   const { kind, id, name, suspended, onDone } = props;
   const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState("");
   const [pending, start] = useTransition();
   const noun = kind === "org" ? "organización" : "enlace";
 
@@ -23,7 +25,7 @@ export function SuspendAction(props: Props) {
     start(async () => {
       let res: PlatformResult;
       if (kind === "org") res = await setOrgStatusAction(id, suspended ? "active" : "suspended");
-      else res = await setLinkStatusAction(id, suspended ? "active" : "paused");
+      else res = await setLinkSuspendedAction(id, !suspended, reason);
       if (res.ok) {
         toast.success(res.message);
         setOpen(false);
@@ -56,7 +58,21 @@ export function SuspendAction(props: Props) {
         destructive={!suspended}
         pending={pending}
         onConfirm={run}
-      />
+      >
+        {kind === "link" && !suspended ? (
+          <div className="grid gap-2">
+            <Label htmlFor={`reason-${id}`}>Motivo (opcional)</Label>
+            <textarea
+              id={`reason-${id}`}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              className="rounded-md border bg-transparent p-2 text-sm focus-visible:outline-2 focus-visible:outline-ring"
+            />
+          </div>
+        ) : null}
+      </ConfirmDialog>
     </>
   );
 }
