@@ -70,6 +70,11 @@ async def find_links(
     return [AdminLinkOut(**r) for r in await svc.find_links(db, slug)]
 
 
+@router.get("/blocked-links", response_model=list[AdminLinkOut])
+async def list_blocked_links(db: DB) -> list[AdminLinkOut]:
+    return [AdminLinkOut(**r) for r in await svc.list_blocked_links(db)]
+
+
 @router.patch("/links/{link_id}/suspend", response_model=AdminLinkSuspendOut)
 async def suspend_link(link_id: UUID, body: LinkSuspendIn, db: DB) -> AdminLinkSuspendOut:
     row = await svc.suspend_link(db, link_id, body.suspended, body.reason)

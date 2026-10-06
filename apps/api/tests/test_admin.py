@@ -205,6 +205,30 @@ def test_unknown_plan_is_422(client: TestClient, mock: respx.MockRouter) -> None
     assert client.patch(f"/v1/admin/orgs/{ORG}", json={"plan": "nope"}).status_code == 422
 
 
+def test_blocked_links(client: TestClient, mock: respx.MockRouter) -> None:
+    row = {
+        "id": LINK,
+        "org_id": ORG,
+        "org_name": "Acme",
+        "slug": "Ab3dE01",
+        "name": "n",
+        "destination_url": "https://evil.com",
+        "status": "active",
+        "created_at": NOW,
+    }
+    rpc(mock, "admin_list_blocked_links", body=[row])
+    r = client.get("/v1/admin/blocked-links")
+    assert r.status_code == 200
+    assert r.json()[0]["destination_url"] == "https://evil.com"
+
+
+def test_blocked_links_403_normal_user(client: TestClient, mock: respx.MockRouter) -> None:
+    rpc(mock, "admin_list_blocked_links", 403, FORBIDDEN)
+    r = client.get("/v1/admin/blocked-links")
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "not_platform_admin"
+
+
 def test_upstream_failure_is_502(client: TestClient, mock: respx.MockRouter) -> None:
     rpc(mock, "admin_list_orgs", 500, {})
     assert client.get("/v1/admin/orgs").status_code == 502

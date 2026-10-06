@@ -80,6 +80,10 @@ async def find_links(db: UserDB, slug: str) -> list[dict[str, Any]]:
     return _rows(await _rpc(db, "admin_find_link", {"p_slug": slug}))
 
 
+async def list_blocked_links(db: UserDB) -> list[dict[str, Any]]:
+    return _rows(await _rpc(db, "admin_list_blocked_links", {}))
+
+
 async def suspend_link(
     db: UserDB, link_id: UUID, suspended: bool, reason: str | None
 ) -> dict[str, Any]:
