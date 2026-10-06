@@ -52,7 +52,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T030 | Servicio generación QR | qr-nfc | DONE (qa PASS) | T020 |
 | DQR-T031 | Migración qr_designs + bucket | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T032 | API diseño y descargas | qr-nfc | DONE (qa PASS · seguridad APPROVED) | T030, T031 |
-| DQR-T033 | Plantillas + Canva | qr-nfc | TESTING (PR #38 fusionado) | T032 |
+| DQR-T033 | Plantillas + Canva | qr-nfc | DONE (qa PASS) | T032 |
 | DQR-T034 | Migración nfc_tags | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | DONE (qa PASS) | T034, T021 |
 | DQR-T036 | Tests de QR | qa | BACKLOG | T032 |
@@ -67,9 +67,9 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T044 | Pantallas de enlaces | frontend | DONE (qa PASS) | T043, T020 |
 | DQR-T045 | Diseñador de QR | frontend | DONE (qa PASS) | T044, T032 |
 | DQR-T046 | Pantalla NFC | frontend | DONE (qa PASS) | T044, T035 |
-| DQR-T047 | Analytics UI | frontend | TESTING (qa PASS UI · E2E pendiente con T042) | T042, T044 |
+| DQR-T047 | Analytics UI | frontend | DONE (qa PASS · cubierto por E2E) | T042, T044 |
 | DQR-T048 | Miembros UI | frontend | DONE (qa PASS) | T043 |
-| DQR-T049 | E2E Playwright | qa | IN_PROGRESS (PR #39 · ejecutando contra staging) | T045, T047 |
+| DQR-T049 | E2E Playwright | qa | DONE (E2E PASS contra staging, limpieza verificada) | T045, T047 |
 
 ## Sprint 4 — Seguridad, plataforma, producción
 | ID | Tarea | Agente | Estado | Dependencias |
@@ -80,7 +80,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T053 | Planes y límites | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T054 | Consola Monky | frontend | CHANGES_REQUESTED (PR #34/#35 · /v1/me y suspend) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
-| DQR-T056 | Observabilidad | devops | TESTING (PR #33 fusionado) | T055 |
+| DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
 | DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | BACKLOG | T050–T052, T054 |
 | DQR-T058 | Regresión + smoke prod | qa | BACKLOG | T055, T057 |
 
