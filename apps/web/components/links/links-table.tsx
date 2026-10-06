@@ -38,7 +38,7 @@ export function LinksTable({ items }: { items: LinkItem[] }) {
               <TableCell>
                 <StatusBadge status={l.status} />
               </TableCell>
-              {/* TODO(T047): mostrar escaneos de los últimos 7 días cuando exista el endpoint de stats. */}
+              {/* TODO(T047): sin endpoint batch de stats (una llamada por fila no es aceptable); rellenar cuando exista. */}
               <TableCell className="text-right text-muted-foreground" aria-label="Sin datos todavía">
                 —
               </TableCell>
