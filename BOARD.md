@@ -36,8 +36,8 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | DONE (qa PASS · seguridad APPROVED) | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
-| DQR-T016 | Auth FastAPI (JWT) | backend-api | IN_REVIEW (PR #6 · rebasado, CI verde) | T010, T013 |
-| DQR-T017 | API orgs y miembros | backend-api | BACKLOG | T016 |
+| DQR-T016 | Auth FastAPI (JWT) | backend-api | TESTING (PR #6 fusionado) | T010, T013 |
+| DQR-T017 | API orgs y miembros | backend-api | IN_PROGRESS | T016 |
 | DQR-T018 | Migración dynamic_links + historial | db-architect | IN_REVIEW (PR #7 · rebasado, CI verde, seguridad APPROVED) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | DONE (qa PASS) | T010 |
 | DQR-T020 | API CRUD enlaces | backend-api | BACKLOG | T016, T018, T019 |
