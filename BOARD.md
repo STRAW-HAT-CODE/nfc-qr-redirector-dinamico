@@ -35,7 +35,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | DONE (qa PASS · seguridad APPROVED) | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | DONE (tenancy_test.sql, 66 tests) | T013 |
-| DQR-T015 | Revisión seguridad S1 | security-reviewer | IN_PROGRESS (cubierta por T057) | T013, T018, T021, T022 |
+| DQR-T015 | Revisión seguridad S1 | security-reviewer | DONE (cerrada en T057: sin críticas ni altas abiertas) | T013, T018, T021, T022 |
 | DQR-T016 | Auth FastAPI (JWT) | backend-api | DONE (qa PASS) | T010, T013 |
 | DQR-T017 | API orgs y miembros | backend-api | DONE (qa PASS) | T016 |
 | DQR-T018 | Migración dynamic_links + historial | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
@@ -44,7 +44,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T021 | Redirector /r/{slug} | backend-api | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T022 | Migración scan_events | db-architect | DONE (qa PASS · seguridad APPROVED · #12) | T018 |
 | DQR-T023 | Registro asíncrono del escaneo | backend-api | DONE (qa PASS · seguridad APPROVED) | T021, T022 |
-| DQR-T024 | Tests S1 | qa | IN_PROGRESS (auditoría de cobertura) | T020, T023 |
+| DQR-T024 | Tests S1 | qa | DONE (qa PASS · huecos cubiertos en #42) | T020, T023 |
 
 ## Sprint 2 — QR y NFC
 | ID | Tarea | Agente | Estado | Dependencias |
@@ -55,7 +55,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T033 | Plantillas + Canva | qr-nfc | DONE (qa PASS) | T032 |
 | DQR-T034 | Migración nfc_tags | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | DONE (qa PASS) | T034, T021 |
-| DQR-T036 | Tests de QR | qa | IN_PROGRESS (auditoría de cobertura QR) | T032 |
+| DQR-T036 | Tests de QR | qa | DONE (qa PASS) | T032 |
 
 ## Sprint 3 — Analytics y dashboard
 | ID | Tarea | Agente | Estado | Dependencias |
@@ -75,13 +75,13 @@ AGENT-10 scribe            Docs y tablero                          activo
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
 | DQR-T050 | Rate limiting | backend-api | DONE (qa PASS) | T023 |
-| DQR-T051 | Política de URLs / abuso | security-reviewer | TESTING (PR #36/#34 fusionados · seguridad APPROVED) | T020 |
+| DQR-T051 | Política de URLs / abuso | security-reviewer | DONE (seguridad APPROVED · E2E OK · blocklist retroactiva en curso) | T020 |
 | DQR-T052 | audit_log | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T053 | Planes y límites | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
-| DQR-T054 | Consola Monky | frontend | IN_REVIEW (API fusionada; UI #35 rebasando) | T043, T053 |
+| DQR-T054 | Consola Monky | frontend | TESTING (API + UI fusionadas) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
 | DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
-| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (auditoría pre-lanzamiento) | T050–T052, T054 |
+| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (NO-GO→GO tras B1–B5: B1 en curso; B2–B5 config prod del usuario) | T050–T052, T054 |
 | DQR-T058 | Regresión + smoke prod | qa | BACKLOG | T055, T057 |
 
 ## Backlog abierto por revisiones
