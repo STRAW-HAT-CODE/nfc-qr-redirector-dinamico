@@ -14,7 +14,7 @@
 | | local | staging | production |
 |---|---|---|---|
 | Dónde vive | Docker vía Supabase CLI (`http://127.0.0.1:54321`) | Proyecto Supabase `huufgmpzusmzmujldxol` (`nfc-redirect-api`, us-east-2, org Alexdev, `https://huufgmpzusmzmujldxol.supabase.co`) + Vercel (preview) | Proyecto Supabase propio + Vercel (`main`) |
-| Cómo se crea | `supabase start` | Proyecto creado por el orquestador; enlazar con `supabase link --project-ref huufgmpzusmzmujldxol` | Solo con OK del usuario |
+| Cómo se crea | `supabase start` | Proyecto existente, designado como staging por el usuario (2026-10-05); enlazar con `supabase link --project-ref huufgmpzusmzmujldxol` | Solo con OK del usuario |
 | Quién migra | db-architect, desde `supabase/migrations/` (`supabase db reset`) | db-architect, desde `supabase/migrations/` (`supabase db push`) | db-architect, desde `supabase/migrations/`, **solo con OK del usuario** y aprobación de security-reviewer |
 | Secretos | `.env` local (git-ignorado) | Env vars de Vercel | Env vars de Vercel |
 
