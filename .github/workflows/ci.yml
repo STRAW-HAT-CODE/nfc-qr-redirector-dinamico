@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    name: api
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+      - run: uv run pytest
+
+  web:
+    name: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      # La versión de pnpm se toma del campo packageManager de apps/web/package.json
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+
+  db:
+    name: db
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.119.0
+      - name: Start local database
+        run: supabase db start
+      - name: Lint database
+        run: supabase db lint --fail-on error
+      - name: Run SQL tests
+        run: |
+          shopt -s nullglob
+          files=(supabase/tests/*.sql)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No SQL tests in supabase/tests/, skipping."
+            exit 0
+          fi
+          # Puerto de BD local desde supabase/config.toml (por defecto 54322)
+          port=$(awk '/^\[db\]/{d=1;next} /^\[/{d=0} d&&/^port *=/{print $3; exit}' supabase/config.toml)
+          port=${port:-54322}
+          for f in "${files[@]}"; do
+            echo "== $f"
+            PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$port" -U postgres -d postgres -f "$f"
+          done
