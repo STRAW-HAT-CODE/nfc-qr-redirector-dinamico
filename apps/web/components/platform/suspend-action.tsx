@@ -51,7 +51,7 @@ export function SuspendAction(props: Props) {
           ) : kind === "org" ? (
             <>«{name}» quedará suspendida: sus enlaces dejarán de redirigir y sus miembros no podrán operar. La acción queda auditada.</>
           ) : (
-            <>«{name}» dejará de redirigir (pausado) hasta que lo reactives. La acción queda auditada.</>
+            <>«{name}» dejará de redirigir hasta que lo reactives. La acción queda auditada.</>
           )
         }
         confirmLabel={suspended ? "Reactivar" : "Suspender"}

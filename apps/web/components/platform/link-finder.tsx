@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { AdminLink } from "@/lib/api";
 
-const STATUS: Record<AdminLink["status"], string> = { active: "Activo", paused: "Suspendido", archived: "Archivado" };
+const STATUS: Record<AdminLink["status"], string> = { active: "Activo", paused: "Pausado", archived: "Archivado" };
+const dateFmt = new Intl.DateTimeFormat("es", { dateStyle: "medium" });
 
 export function LinkFinder() {
   const [slug, setSlug] = useState("");
@@ -92,11 +93,21 @@ function LinkRow({ link, onChanged }: { link: AdminLink; onChanged: () => void }
       </TableCell>
       <TableCell>{link.org_name}</TableCell>
       <TableCell>
-        <Badge variant={link.status === "active" ? "outline" : "secondary"}>{STATUS[link.status]}</Badge>
+        {link.suspended_at ? (
+          <>
+            <Badge variant="outline" className="border-destructive/30 bg-destructive/10 text-destructive">Suspendido</Badge>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {dateFmt.format(new Date(link.suspended_at))}
+              {link.suspended_reason ? ` · ${link.suspended_reason}` : ""}
+            </div>
+          </>
+        ) : (
+          <Badge variant="outline">{STATUS[link.status]}</Badge>
+        )}
       </TableCell>
       <TableCell>
         <div className="flex justify-end">
-          <SuspendAction kind="link" id={link.id} name={link.slug} suspended={link.status !== "active"} onDone={onChanged} />
+          <SuspendAction kind="link" id={link.id} name={link.slug} suspended={link.suspended_at !== null} onDone={onChanged} />
         </div>
       </TableCell>
     </TableRow>
