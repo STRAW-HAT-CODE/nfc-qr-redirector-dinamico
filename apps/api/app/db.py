@@ -63,6 +63,20 @@ class UserDB:
         rows: list[dict[str, Any]] = resp.json()
         return rows
 
+    async def upsert(
+        self, table: str, row: dict[str, Any], on_conflict: str
+    ) -> list[dict[str, Any]]:
+        """INSERT … ON CONFLICT (on_conflict) DO UPDATE de las columnas enviadas."""
+        resp = await self._client.post(
+            f"/{table}",
+            params={"on_conflict": on_conflict},
+            json=row,
+            headers={"Prefer": "return=representation,resolution=merge-duplicates"},
+        )
+        _check(resp)
+        rows: list[dict[str, Any]] = resp.json()
+        return rows
+
     async def update(
         self, table: str, params: dict[str, str], values: dict[str, Any]
     ) -> list[dict[str, Any]]:
