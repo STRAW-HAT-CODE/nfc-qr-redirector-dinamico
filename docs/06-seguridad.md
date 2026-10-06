@@ -52,3 +52,5 @@ security-reviewer aprueba toda migración y registra hallazgos aquí.
 | 2026-10-05 | DQR-T021 | H3 BAJA: cuerpo dict o destino None → 500 sin no-store; `""` → Location vacío → fila procesada dentro del try, `except Exception` → 503, validar esquema | Resuelto |
 | 2026-10-05 | DQR-T021 | H4 INFO: `t` libre (ASCII ≤ 64) frente a `tag_id` uuid → T023 valida uuid o no lo pasa hasta T034 | Info / T023 |
 | 2026-10-05 | DQR-T021 | H5 INFO: tope total del RPC (`asyncio.timeout(1.5)` → 503, hecho); falta fail-fast si no hay key (T055); rate limit en T050; archived va a fallback como pausado (decisión de producto); filtrar apikey en un APM | Parcial / T055 · T050 |
+| 2026-10-05 | DQR-T021 | R1 BAJA: `HTTPS://` guardado (la BD lo acepta con `~*`) → 503 permanente → esquema comparado sin distinguir mayúsculas (`urlsplit(url).scheme.lower()`) | Resuelto |
+| 2026-10-05 | DQR-T021 | R2 INFO (proceso): las filas de docs/06 las añade security-reviewer o el orquestador, no el agente de la tarea | Info / proceso |

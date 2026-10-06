@@ -310,3 +310,11 @@ def test_rpc_total_timeout_is_503(client: TestClient, monkeypatch: pytest.Monkey
     r = client.get(f"/r/{SLUG}")
     assert r.status_code == 503
     assert_safe(r)
+
+
+@respx.mock
+def test_uppercase_scheme_redirects(client: TestClient) -> None:
+    mock_rows([row(destination_url="HTTPS://example.com/x")])
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 302
+    assert r.headers["location"] == "HTTPS://example.com/x"

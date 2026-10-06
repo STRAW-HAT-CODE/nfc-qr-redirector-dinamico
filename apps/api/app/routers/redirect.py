@@ -10,7 +10,7 @@ import logging
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 
@@ -72,7 +72,7 @@ _RPC_TIMEOUT_S = 1.5
 
 def _redirect(url: str) -> Response:
     """302 al destino guardado, percent-encoded (UTF-8) y solo http(s)."""
-    if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+    if not isinstance(url, str) or urlsplit(url).scheme.lower() not in {"http", "https"}:
         raise ValueError("destino no http(s)")
     return Response(status_code=302, headers={**_NO_STORE, "Location": quote(url, safe=_URL_SAFE)})
 
