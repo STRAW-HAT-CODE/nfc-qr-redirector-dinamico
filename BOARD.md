@@ -52,7 +52,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T030 | Servicio generación QR | qr-nfc | DONE (qa PASS) | T020 |
 | DQR-T031 | Migración qr_designs + bucket | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T032 | API diseño y descargas | qr-nfc | TESTING (PR #29 fusionado · seguridad APPROVED) | T030, T031 |
-| DQR-T033 | Plantillas + Canva | qr-nfc | BACKLOG | T032 |
+| DQR-T033 | Plantillas + Canva | qr-nfc | IN_PROGRESS | T032 |
 | DQR-T034 | Migración nfc_tags | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | DONE (qa PASS) | T034, T021 |
 | DQR-T036 | Tests de QR | qa | BACKLOG | T032 |
@@ -65,7 +65,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T042 | Endpoints de métricas | analytics | IN_REVIEW (PR #28 · rebasando) | T040, T041 |
 | DQR-T043 | Next.js base + auth | frontend | DONE (qa PASS) | T010, T017 |
 | DQR-T044 | Pantallas de enlaces | frontend | DONE (qa PASS) | T043, T020 |
-| DQR-T045 | Diseñador de QR | frontend | BACKLOG | T044, T032 |
+| DQR-T045 | Diseñador de QR | frontend | IN_PROGRESS | T044, T032 |
 | DQR-T046 | Pantalla NFC | frontend | DONE (qa PASS) | T044, T035 |
 | DQR-T047 | Analytics UI | frontend | TESTING (PR #31 fusionado) | T042, T044 |
 | DQR-T048 | Miembros UI | frontend | DONE (qa PASS) | T043 |
