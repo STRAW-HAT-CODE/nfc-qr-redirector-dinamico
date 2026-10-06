@@ -32,7 +32,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 |---|---|---|---|---|
 | DQR-T010 | Scaffold monorepo | devops | IN_PROGRESS (feat/DQR-T010-scaffold) | T005 |
 | DQR-T011 | CI | devops | BACKLOG | T010 |
-| DQR-T012 | Supabase dev/staging + .env.example | devops | TESTING (PR #1 fusionado) | T005 |
+| DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | BACKLOG | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
