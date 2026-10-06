@@ -5,34 +5,34 @@ Estados: BACKLOG · READY · IN_PROGRESS · BLOCKED · IN_REVIEW · CHANGES_REQU
 
 ## Control de agentes
 ```
-AGENT-00 orchestrator      Sprint 0 — Hub y organización          IN_REVIEW (espera OK del usuario: DQR-T005)
+AGENT-00 orchestrator      Sprint 1 — coordinación                 activo (S0 DONE, S1 aprobado 2026-10-05)
 AGENT-01 product           Especificación MVP                      DONE (docs/01-producto.md)
-AGENT-02 db-architect      Arquitectura de BD multi-tenant         READY tras T005 (desbloqueado: ADR-0001)
+AGENT-02 db-architect      Arquitectura de BD multi-tenant         BACKLOG (T013 espera T010, T012)
 AGENT-03 backend-api       API + redirector                        BACKLOG (depende de T013/T018)
 AGENT-04 qr-nfc            Generación QR / NFC                     BACKLOG (depende de T020)
 AGENT-05 analytics         Modelo de eventos                       BACKLOG (depende de T023 — redirector)
 AGENT-06 frontend          Dashboard                               BACKLOG (depende de T017)
 AGENT-07 security-reviewer Revisión S1                             BACKLOG
 AGENT-08 qa                Estrategia de pruebas                   BACKLOG (definida en AGENTS.md)
-AGENT-09 devops            Scaffold + Supabase                     READY tras T005 (T010, T012)
+AGENT-09 devops            Scaffold + Supabase                     IN_PROGRESS (T010, T012)
 AGENT-10 scribe            Docs y tablero                          activo
 ```
 
 ## Sprint 0 — Organización (sin código)
 | ID | Tarea | Agente | Estado | Dependencias | Archivos | Revisado por |
 |---|---|---|---|---|---|---|
-| DQR-T001 | Project Hub en Notion | orchestrator | IN_REVIEW | — | Notion | usuario |
-| DQR-T002 | Especificación docs/ | orchestrator | IN_REVIEW | T001 | docs/ | usuario |
-| DQR-T003 | Agentes AGENTS.md / .claude/agents | orchestrator | IN_REVIEW | T001 | AGENTS.md, .claude/agents/ | usuario |
-| DQR-T004 | ADRs iniciales | orchestrator | IN_REVIEW | — | docs/adr/ | usuario |
-| DQR-T005 | OK del usuario para S1 | orchestrator | BLOCKED | T001–T004 | — | — |
+| DQR-T001 | Project Hub en Notion | orchestrator | DONE | — | Notion | usuario |
+| DQR-T002 | Especificación docs/ | orchestrator | DONE | T001 | docs/ | usuario |
+| DQR-T003 | Agentes AGENTS.md / .claude/agents | orchestrator | DONE | T001 | AGENTS.md, .claude/agents/ | usuario |
+| DQR-T004 | ADRs iniciales | orchestrator | DONE | — | docs/adr/ | usuario |
+| DQR-T005 | OK del usuario para S1 | orchestrator | DONE | T001–T004 | — | usuario (2026-10-05) |
 
 ## Sprint 1 — Fundaciones, tenancy, enlaces, redirector
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
-| DQR-T010 | Scaffold monorepo | devops | READY | T005 |
+| DQR-T010 | Scaffold monorepo | devops | IN_PROGRESS (feat/DQR-T010-scaffold) | T005 |
 | DQR-T011 | CI | devops | BACKLOG | T010 |
-| DQR-T012 | Supabase dev/staging + .env.example | devops | READY | T005 |
+| DQR-T012 | Supabase dev/staging + .env.example | devops | IN_PROGRESS (feat/DQR-T012-entornos) | T005 |
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | BACKLOG | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
