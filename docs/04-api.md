@@ -23,16 +23,28 @@ Base: `apps/api`. Autenticación: `Authorization: Bearer <JWT de Supabase>`. Org
 | `GET /v1/links/{id}/qr.{png,svg,pdf}` | viewer | Descarga (`?size=`, `?template=`) |
 | `GET /v1/links/{id}/nfc-tags` · `POST` | viewer · editor | Tags NFC |
 | `GET /v1/links/{id}/stats` | viewer | `from`, `to`, `group=day\|channel\|country\|device` |
-| `GET /v1/orgs/{org}/stats` | viewer | Métricas de la organización |
-| `/v1/admin/orgs` | platform admin | Clientes, planes, suspensión |
+| `GET /v1/orgs/{org}/stats` | viewer | Métricas de la organización (rollups diarios) |
+| `GET /v1/me` | autenticado | Datos del usuario actual, rol en orgs, `is_platform_admin` |
+| `GET /v1/admin/orgs` | platform admin | Listar orgs (búsqueda, paginación, 30d scans) |
+| `PATCH /v1/admin/orgs/{org}` | platform admin | Cambiar plan, límites, estado (suspender), bloqueo de dominio |
+| `POST /v1/admin/blocked-domains` | platform admin | Bloquear dominio |
+| `DELETE /v1/admin/blocked-domains` | platform admin | Desbloquear (dominio en cuerpo) |
+| `PATCH /v1/admin/links/{id}/status` | platform admin | Suspender/reactivar enlace |
+| RPC `public.am_i_platform_admin()` | autenticado | `true` si es platform admin |
+| RPC `public.my_effective_role(org_id)` | autenticado | Rol en esa org (`owner/admin/editor/viewer/null`) |
 
 ## Errores
-JSON `{ "error": { "code": "link_not_found", "message": "…" } }`. Códigos: 400 validación, 401 sin token, 403 sin permiso, 404, 409 conflicto (slug), 422, 429 rate limit.
+JSON `{ "error": { "code": "error_code", "message": "…" } }`. Códigos:
+- **2xx:** `200` OK · `201` Created
+- **4xx:** `400` validación (p. ej. slug inválido) · `401` sin token · `403` sin permiso (`insufficient_role`, `not_platform_admin`, `link_suspended`) · `404` no encontrado · `409` conflicto (`slug_taken`, `org_limit_reached`) · `413` cuerpo demasiado grande · `422` semántica inválida (p. ej. plan no existe) · `429` rate limit (`plan_limit_reached`, `org_limit_reached`)
+- **5xx:** `502` backend (upstream error) · `503` servicio no disponible (BD caída, timeout)
 
 ## Redirector
 | Situación | Respuesta |
 |---|---|
-| Activo y vigente | 302 → destination_url |
+| Activo y vigente | 302 → destination_url, `Cache-Control: no-store` |
 | Pausado, vencido o no iniciado | 302 → fallback_url, o página "no disponible" (200) |
-| Org suspendida | Página "no disponible" |
-| Slug inexistente | 404 con página amable |
+| Suspendido (platform admin) | Página "no disponible" (200), sin fallback |
+| Org suspendida | Página "no disponible" (200) |
+| Slug inexistente | 404 con página amable, `Cache-Control: no-store` |
+| Error de BD o timeout | 503 genérico, `Cache-Control: no-store` |
