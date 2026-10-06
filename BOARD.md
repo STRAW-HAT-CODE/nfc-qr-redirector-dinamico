@@ -41,19 +41,19 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T018 | Migración dynamic_links + historial | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | DONE (qa PASS) | T010 |
 | DQR-T020 | API CRUD enlaces | backend-api | DONE (qa PASS) | T016, T018, T019 |
-| DQR-T021 | Redirector /r/{slug} | backend-api | TESTING (PR #9 fusionado · seguridad APPROVED) | T018 |
+| DQR-T021 | Redirector /r/{slug} | backend-api | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T022 | Migración scan_events | db-architect | DONE (qa PASS · seguridad APPROVED · #12) | T018 |
-| DQR-T023 | Registro asíncrono del escaneo | backend-api | IN_PROGRESS | T021, T022 |
+| DQR-T023 | Registro asíncrono del escaneo | backend-api | IN_REVIEW (PR #17 · seguridad) | T021, T022 |
 | DQR-T024 | Tests S1 | qa | BACKLOG | T020, T023 |
 
 ## Sprint 2 — QR y NFC
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
-| DQR-T030 | Servicio generación QR | qr-nfc | TESTING (PR #13 fusionado) | T020 |
-| DQR-T031 | Migración qr_designs + bucket | db-architect | IN_PROGRESS | T018 |
+| DQR-T030 | Servicio generación QR | qr-nfc | DONE (qa PASS) | T020 |
+| DQR-T031 | Migración qr_designs + bucket | db-architect | IN_REVIEW (PR #16 · seguridad) | T018 |
 | DQR-T032 | API diseño y descargas | qr-nfc | BACKLOG | T030, T031 |
 | DQR-T033 | Plantillas + Canva | qr-nfc | BACKLOG | T032 |
-| DQR-T034 | Migración nfc_tags | db-architect | IN_PROGRESS | T018 |
+| DQR-T034 | Migración nfc_tags | db-architect | IN_REVIEW (PR #15 · seguridad) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | BACKLOG | T034, T021 |
 | DQR-T036 | Tests de QR | qa | BACKLOG | T032 |
 
@@ -61,14 +61,14 @@ AGENT-10 scribe            Docs y tablero                          activo
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
 | DQR-T040 | Enriquecimiento + bots | analytics | BACKLOG | T023 |
-| DQR-T041 | Rollups pg_cron | db-architect | BACKLOG | T022 |
+| DQR-T041 | Rollups pg_cron | db-architect | IN_PROGRESS | T022 |
 | DQR-T042 | Endpoints de métricas | analytics | BACKLOG | T040, T041 |
-| DQR-T043 | Next.js base + auth | frontend | IN_PROGRESS | T010, T017 |
-| DQR-T044 | Pantallas de enlaces | frontend | BACKLOG | T043, T020 |
+| DQR-T043 | Next.js base + auth | frontend | TESTING (PR #14 fusionado) | T010, T017 |
+| DQR-T044 | Pantallas de enlaces | frontend | IN_PROGRESS | T043, T020 |
 | DQR-T045 | Diseñador de QR | frontend | BACKLOG | T044, T032 |
 | DQR-T046 | Pantalla NFC | frontend | BACKLOG | T044, T035 |
 | DQR-T047 | Analytics UI | frontend | BACKLOG | T042, T044 |
-| DQR-T048 | Miembros UI | frontend | BACKLOG | T043 |
+| DQR-T048 | Miembros UI | frontend | IN_PROGRESS | T043 |
 | DQR-T049 | E2E Playwright | qa | BACKLOG | T045, T047 |
 
 ## Sprint 4 — Seguridad, plataforma, producción
