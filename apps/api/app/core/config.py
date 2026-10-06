@@ -14,9 +14,6 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str = ""
     public_redirect_base_url: str = ""
     ip_hash_salt: str = ""
-    next_public_supabase_url: str = ""
-    next_public_supabase_anon_key: str = ""
-    next_public_api_url: str = ""
 
 
 @lru_cache
