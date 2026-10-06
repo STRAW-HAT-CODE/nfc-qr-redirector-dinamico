@@ -9,7 +9,7 @@ from app.core.logging import AccessLogMiddleware, init_sentry, setup_logging
 from app.errors import register_error_handlers
 from app.middleware.body_limit import BodyLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, build_rate_limiter
-from app.routers import links, nfc, orgs, qr, redirect, stats
+from app.routers import admin, links, me, nfc, orgs, qr, redirect, stats
 from app.service_db import ServiceDB, build_service_client
 
 
@@ -32,6 +32,8 @@ register_error_handlers(app)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(BodyLimitMiddleware)
 app.add_middleware(AccessLogMiddleware)  # el más externo: ve también los 429
+app.include_router(me.router)
+app.include_router(admin.router)
 app.include_router(orgs.router)
 app.include_router(links.router)
 app.include_router(nfc.router)

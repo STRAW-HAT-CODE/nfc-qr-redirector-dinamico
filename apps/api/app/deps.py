@@ -10,7 +10,7 @@ from fastapi import Depends, Header
 
 from app.auth import CurrentUser, InvalidTokenError, verify_token
 from app.core.config import Settings, get_settings
-from app.db import UserDB
+from app.db import PostgrestError, UserDB
 from app.errors import ApiError
 
 
@@ -61,23 +61,23 @@ async def get_db(
 
 
 async def fetch_role(db: UserDB, org_id: UUID, user_id: str) -> Role | None:
-    """Rol del usuario en la org según RLS (sin fila => no es miembro)."""
+    """Rol efectivo vía RPC `my_effective_role` (platform admin => owner; sin rol => None).
+
+    `user_id` se conserva por compatibilidad: la BD resuelve al usuario desde el JWT.
+    """
+    del user_id
     try:
-        rows = await db.select(
-            "memberships",
-            {
-                "select": "role",
-                "org_id": f"eq.{org_id}",
-                "user_id": f"eq.{user_id}",
-                "limit": "1",
-            },
-        )
+        raw = await db.rpc("my_effective_role", {"p_org_id": str(org_id)})
+    except PostgrestError:
+        raise ApiError(502, "upstream_error", "No se pudo consultar la membresía") from None
     except httpx.HTTPError:
         raise ApiError(502, "upstream_error", "No se pudo consultar la membresía") from None
-    if not rows:
+    if isinstance(raw, list):  # tolera la forma de lista
+        raw = raw[0] if raw else None
+    if not isinstance(raw, str):
         return None
     try:
-        return Role[str(rows[0]["role"])]
+        return Role[raw]
     except KeyError:
         return None
 

@@ -98,6 +98,8 @@ class UserDB:
     async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
         resp = await self._client.post(f"/rpc/{fn}", json=args)
         _check(resp)
+        if resp.status_code == 204 or not resp.content:  # funciones void
+            return None
         return resp.json()
 
     async def aclose(self) -> None:

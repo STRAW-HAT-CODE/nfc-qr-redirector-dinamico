@@ -61,9 +61,11 @@ class FakeDB:
         if any(t["org_id"] == org and t["uid"] == uid and t["id"] != own for t in self.tags):
             raise PostgrestError(409, "23505", "duplicate key nfc_tags_org_uid_key")
 
+    async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
+        assert fn == "my_effective_role"
+        return self.role
+
     async def select(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
-        if table == "memberships":
-            return [{"role": self.role}] if self.role else []
         rows = self.links if table == "dynamic_links" else self.tags
         if not self._can("viewer"):
             return []
