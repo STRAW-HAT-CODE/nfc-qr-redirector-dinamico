@@ -137,8 +137,6 @@ def _load_logo(data: bytes) -> Image.Image:
         raise QrRenderError("logo inválido")
     if len(data) > MAX_LOGO_BYTES:
         raise QrRenderError("logo demasiado grande")
-    prev = Image.MAX_IMAGE_PIXELS
-    Image.MAX_IMAGE_PIXELS = MAX_LOGO_PIXELS
     try:
         with Image.open(io.BytesIO(bytes(data)), formats=sorted(_LOGO_FORMATS)) as im:
             if im.width * im.height > MAX_LOGO_PIXELS:
@@ -149,8 +147,6 @@ def _load_logo(data: bytes) -> Image.Image:
         raise
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as exc:
         raise QrRenderError("logo: formato no soportado o corrupto") from exc
-    finally:
-        Image.MAX_IMAGE_PIXELS = prev
 
 
 # --------------------------------------------------------------------------- contraste

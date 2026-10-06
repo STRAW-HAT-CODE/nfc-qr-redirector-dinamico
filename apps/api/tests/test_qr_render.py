@@ -251,3 +251,11 @@ def test_logo_area_at_most_20_percent():
         assert lay.logo_box is not None
         x0, y0, x1, y1 = lay.logo_box
         assert (x1 - x0) * (y1 - y0) <= 0.2 * lay.n**2
+
+
+def test_logo_load_does_not_change_max_image_pixels():
+    before = Image.MAX_IMAGE_PIXELS
+    QrDesign(logo=_logo())
+    with pytest.raises(QrRenderError):
+        QrDesign(logo=b"not an image")
+    assert before == Image.MAX_IMAGE_PIXELS
