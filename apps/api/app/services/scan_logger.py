@@ -17,7 +17,6 @@ Privacidad:
 import asyncio
 import hashlib
 import hmac
-import ipaddress
 import logging
 import re
 from datetime import UTC, datetime
@@ -28,6 +27,8 @@ from uuid import UUID
 from fastapi import Request
 
 from app.core.config import get_settings
+from app.core.net import client_ip
+from app.core.net import norm_ip as _norm_ip  # noqa: F401  (compat: tests y callers previos)
 from app.service_db import ServiceDB
 
 logger = logging.getLogger(__name__)
@@ -76,29 +77,6 @@ def referer_origin(value: str | None) -> str | None:
         host = f"[{host}]"
     origin = f"{parts.scheme}://{host}" + (f":{port}" if port else "")
     return origin if len(origin) <= _MAX_REFERER else None
-
-
-def _norm_ip(raw: str | None) -> str | None:
-    """IP canónica (IPv6 comprimida, IPv4 mapeada → IPv4); basura o con puerto → None."""
-    if not raw:
-        return None
-    try:
-        ip = ipaddress.ip_address(raw.strip())
-    except ValueError:
-        return None
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return ip.compressed
-
-
-def client_ip(request: Request, trusted_hops: int) -> str | None:
-    direct = _norm_ip(request.client.host if request.client else None)
-    if trusted_hops <= 0:
-        return direct
-    chain = [p.strip() for p in request.headers.get("x-forwarded-for", "").split(",") if p.strip()]
-    if len(chain) >= trusted_hops:
-        return _norm_ip(chain[-trusted_hops])
-    return direct
 
 
 def hash_ip(ip: str | None, salt: str, now: datetime | None = None) -> str | None:
