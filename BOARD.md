@@ -30,16 +30,16 @@ AGENT-10 scribe            Docs y tablero                          activo
 ## Sprint 1 — Fundaciones, tenancy, enlaces, redirector
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
-| DQR-T010 | Scaffold monorepo | devops | IN_REVIEW (PR #2 · espera merge) | T005 |
-| DQR-T011 | CI | devops | IN_REVIEW (PR #3 · CI verde) | T010 |
+| DQR-T010 | Scaffold monorepo | devops | TESTING (PR #2 fusionado) | T005 |
+| DQR-T011 | CI | devops | TESTING (PR #3 fusionado) | T010 |
 | DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
-| DQR-T013 | Migración tenancy + helpers RLS | db-architect | IN_REVIEW (PR #5 · seguridad APPROVED) | T010, T012 |
+| DQR-T013 | Migración tenancy + helpers RLS | db-architect | TESTING (PR #5 fusionado) | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
 | DQR-T016 | Auth FastAPI (JWT) | backend-api | IN_REVIEW (PR #6) | T010, T013 |
 | DQR-T017 | API orgs y miembros | backend-api | BACKLOG | T016 |
 | DQR-T018 | Migración dynamic_links + historial | db-architect | IN_REVIEW (PR #7 · seguridad APPROVED) | T013 |
-| DQR-T019 | Slug + política de URLs | backend-api | IN_REVIEW (PR #4) | T010 |
+| DQR-T019 | Slug + política de URLs | backend-api | TESTING (PR #4 fusionado) | T010 |
 | DQR-T020 | API CRUD enlaces | backend-api | BACKLOG | T016, T018, T019 |
 | DQR-T021 | Redirector /r/{slug} | backend-api | BACKLOG | T018 |
 | DQR-T022 | Migración scan_events | db-architect | BACKLOG | T018 |
