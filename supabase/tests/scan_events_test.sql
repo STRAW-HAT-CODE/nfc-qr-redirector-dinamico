@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(68);
+select plan(86);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres)
@@ -299,6 +299,70 @@ select throws_ok($$ insert into public.scan_events (link_id, org_id, channel)
 select throws_ok($$ select public.record_scan(
     'a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', 'qr') $$,
   '42501', null, 'anon no puede ejecutar record_scan');
+select pg_temp.logout();
+
+-- -----------------------------------------------------------------------------
+-- scan_clip endurecido (revisión de seguridad H2 + H3)
+-- -----------------------------------------------------------------------------
+select is(private.scan_clip(E' iPhone‮gnp​.exe ﻿\x01 ', 64),
+  'iPhonegnp.exe', 'scan_clip: caso del informe (NBSP, RLO, ZWSP, LS, BOM, C0)');
+select is(private.scan_clip(
+    E'a­b‌c‍d‎e‏f g‪h‫i‬j‭k⁠l⁦m⁩n⁯o', 64),
+  'abcdefghijklmno', 'scan_clip quita los caracteres de formato Unicode de todos los rangos');
+select is(private.scan_clip(E'  ', 64), null,
+  'scan_clip: un valor solo de NBSP queda en NULL');
+select is(private.scan_clip(E'  Mac    OS X  ', 64), 'Mac OS X',
+  'scan_clip normaliza secuencias de espacios (incl. NBSP) a un solo espacio');
+select is(private.scan_clip(E'\x7F\u0085​', 64), null,
+  'scan_clip: solo controles C0/C1 y formato → NULL');
+select is(private.scan_clip('Café 日本 🙂', 64), 'Café 日本 🙂',
+  'scan_clip conserva texto Unicode visible');
+select is(private.scan_clip(null, 64), null, 'scan_clip(NULL) = NULL');
+
+-- Entradas grandes: se recorta a p_max * 4 antes de las regex.
+select is(char_length(private.scan_clip(repeat('é', 5000000), 512)), 512,
+  'scan_clip: entrada de 5 M caracteres → 512');
+select is(private.scan_clip(repeat('ab', 3000000) || E'‮', 4), 'abab',
+  'scan_clip: entrada de 6 M caracteres → p_max');
+select is(private.scan_clip(repeat(E'​', 3000) || 'tail', 512), null,
+  'scan_clip solo mira los primeros p_max * 4 caracteres (relleno invisible → NULL)');
+select is(char_length(private.scan_clip(repeat(E'x​', 3000), 512)), 512,
+  'scan_clip: con relleno invisible intercalado aún llena p_max');
+create temp table _clip_big as select repeat(E'r\x01‮', 4000000) as v;
+create temp table _clip_t0 as select clock_timestamp() as t;
+create temp table _clip_out as select private.scan_clip(v, 512) as c from _clip_big;
+select ok((select clock_timestamp() - t from _clip_t0) < interval '250 milliseconds',
+  'scan_clip sobre 12 M caracteres con controles tarda < 250 ms (sin regex sobre toda la entrada)');
+
+select is((select p.prosecdef from pg_proc p
+           where p.oid = 'private.scan_clip(text, int)'::regprocedure), false,
+  'scan_clip no es SECURITY DEFINER');
+select is((select pg_get_userbyid(p.proowner) from pg_proc p
+           where p.oid = 'private.scan_clip(text, int)'::regprocedure), 'postgres',
+  'scan_clip sigue siendo de postgres');
+select is((select p.provolatile::text || coalesce(array_to_string(p.proconfig, ','), '') from pg_proc p
+           where p.oid = 'private.scan_clip(text, int)'::regprocedure), 'isearch_path=""',
+  'scan_clip es IMMUTABLE con search_path vacío');
+select ok(not has_function_privilege('anon', 'private.scan_clip(text, int)', 'execute')
+      and not has_function_privilege('authenticated', 'private.scan_clip(text, int)', 'execute')
+      and has_function_privilege('service_role', 'private.scan_clip(text, int)', 'execute'),
+  'scan_clip: EXECUTE solo para service_role');
+
+select pg_temp.as_role('service_role');
+select ok(
+  public.record_scan(
+    'a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', 'qr',
+    p_device  => E'mobile​',
+    p_os      => E'  ',
+    p_browser => E'Safari  17',
+    p_referer => E'https://ref.example.com/‮txt.exe' || repeat(E' z', 2000000)
+  ) > 0,
+  'record_scan con formato Unicode y referer enorme');
+select results_eq(
+  $$ select device, os, browser, char_length(referer), position(E'‮' in referer)
+     from public.scan_events order by id desc limit 1 $$,
+  $$ values ('mobile'::text, null::text, 'Safari 17'::text, 512, 0) $$,
+  'record_scan aplica el saneado endurecido (sin formato, NBSP → espacio o NULL, ≤ 512)');
 select pg_temp.logout();
 
 -- -----------------------------------------------------------------------------
