@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- Dynamic QR ---
+.env.*
+!.env.example
+node_modules/
+.next/
+out/
+.vercel/
+supabase/.branches/
+supabase/.temp/

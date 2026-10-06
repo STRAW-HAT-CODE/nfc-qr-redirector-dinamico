@@ -7,3 +7,14 @@ API de redirección dinámica para tarjetas NFC y códigos QR — **Dynamic QR**
 - Tablero: [`BOARD.md`](BOARD.md) (espejo de Notion)
 
 Stack: FastAPI (Python) · Next.js · Supabase · Vercel.
+
+## Arranque local
+Requisitos: Python 3.12 + [uv](https://docs.astral.sh/uv/), Node 20+ con pnpm, Docker (Supabase local).
+
+```bash
+make db     # Supabase local (supabase start)
+make api    # http://localhost:8000/healthz
+make web    # http://localhost:3000
+make dev    # todo junto
+make lint typecheck test build
+```
