@@ -11,7 +11,7 @@ Privacidad:
   entrada que añadió el proxy confiable más externo, contando desde la derecha.
   En Vercel, que sobrescribe x-forwarded-for con la IP real del cliente, usar 1.
 - Referer: solo el origen (scheme://host[:port]).
-- device/os/browser quedan en null: el enriquecimiento es de T040.
+- device/os/browser/is_bot salen de scan_enrich (T040); el UA en bruto no se guarda.
 """
 
 import asyncio
@@ -29,22 +29,14 @@ from fastapi import Request
 
 from app.core.config import get_settings
 from app.service_db import ServiceDB
+from app.services.scan_enrich import enrich
 
 logger = logging.getLogger(__name__)
 
 _TIMEOUT_S = 2.0
 _COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
 _MAX_REFERER = 512
-# Heurística mínima; T040 (analytics) la reemplaza con la detección real de bots.
-_BOT_MARKERS = (
-    "curl", "wget", "bot", "spider", "crawler", "facebookexternalhit", "preview",
-)  # fmt: skip
 _warned_no_salt = False
-
-
-def is_bot(user_agent: str | None) -> bool:
-    ua = (user_agent or "").strip().lower()
-    return not ua or any(m in ua for m in _BOT_MARKERS)
 
 
 def parse_tag_id(tag: str | None, channel: str) -> str | None:
@@ -120,6 +112,7 @@ def build_payload(
 ) -> dict[str, Any]:
     settings = get_settings()
     ip = client_ip(request, settings.trusted_proxy_hops)
+    ua = enrich(request.headers.get("user-agent"))
     return {
         "p_link_id": link["id"],
         "p_org_id": link["org_id"],
@@ -131,12 +124,12 @@ def build_payload(
             if settings.trusted_proxy_hops >= 1
             else None
         ),
-        "p_device": None,
-        "p_os": None,
-        "p_browser": None,
+        "p_device": ua.device,
+        "p_os": ua.os,
+        "p_browser": ua.browser,
         "p_referer": referer_origin(request.headers.get("referer")),
         "p_ip_hash": hash_ip(ip, settings.ip_hash_salt),
-        "p_is_bot": is_bot(request.headers.get("user-agent")),
+        "p_is_bot": ua.is_bot,
     }
 
 

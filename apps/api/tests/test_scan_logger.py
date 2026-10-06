@@ -77,7 +77,7 @@ def test_payload_per_channel(client: TestClient, query: str, channel: str) -> No
     assert p["p_org_id"] == ORG_ID
     assert p["p_channel"] == channel
     assert p["p_tag_id"] is None
-    assert p["p_device"] is None and p["p_os"] is None and p["p_browser"] is None
+    assert p["p_device"] == "mobile" and p["p_os"] == "iOS"
     assert p["p_is_bot"] is False
     assert len(p["p_ip_hash"]) == 64
 
