@@ -81,8 +81,8 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T054 | Consola Monky | frontend | DONE (qa PASS) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | DONE (prod: dqr-web.vercel.app + dqr-api.vercel.app · Supabase nfc-redirect-api) | T011 |
 | DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
-| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (B1, B2, B5 y N1 cerrados · falta B3 allowlist Auth + B4 platform admin) | T050–T052, T054 |
-| DQR-T058 | Regresión + smoke prod | qa | IN_PROGRESS (smoke prod: healthz 200 db ok, /r 404, web /login 200 con cabeceras) | T055, T057 |
+| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (B1,B2,B4,B5,N1 cerrados · advisors prod sin errores · falta activar leaked password protection) | T050–T052, T054 |
+| DQR-T058 | Regresión + smoke prod | qa | DONE (smoke prod OK: healthz db ok, /r 404, web 200 con cabeceras; platform admin dado de alta) | T055, T057 |
 
 ## Backlog abierto por revisiones
 | Origen | Pendiente | Decide |
