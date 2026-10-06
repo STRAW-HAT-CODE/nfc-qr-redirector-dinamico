@@ -81,3 +81,52 @@ jobs:
             echo "== $f"
             PGPASSWORD=postgres psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p "$port" -U postgres -d postgres -f "$f"
           done
+
+  # Opcional: solo corre si existen los secrets E2E_* (staging). No falla si faltan.
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    env:
+      HAS_E2E: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY != '' }}
+      SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.E2E_SUPABASE_URL }}
+      SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.E2E_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.E2E_SUPABASE_SERVICE_ROLE_KEY }}
+      IP_HASH_SALT: ${{ secrets.E2E_IP_HASH_SALT }}
+    steps:
+      - name: Sin secrets E2E, se omite
+        if: env.HAS_E2E != 'true'
+        run: echo "E2E_* no configurados; se omite."
+      - uses: actions/checkout@v4
+        if: env.HAS_E2E == 'true'
+      - uses: astral-sh/setup-uv@v5
+        if: env.HAS_E2E == 'true'
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: apps/api/uv.lock
+      - uses: pnpm/action-setup@v4
+        if: env.HAS_E2E == 'true'
+        with:
+          package_json_file: apps/web/package.json
+      - uses: actions/setup-node@v4
+        if: env.HAS_E2E == 'true'
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+      - if: env.HAS_E2E == 'true'
+        run: uv sync --locked
+        working-directory: apps/api
+      - if: env.HAS_E2E == 'true'
+        working-directory: apps/web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: env.HAS_E2E == 'true' && always()
+        with:
+          name: e2e-artifacts
+          path: apps/web/test-results
