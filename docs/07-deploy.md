@@ -36,6 +36,56 @@ Número de proxies confiables delante de la API. Con `0` (por defecto, local) se
 ### Claves
 Las claves de staging y production viven únicamente en las env vars de Vercel; nunca en el repo, issues, PRs ni logs.
 
+## Vercel (DQR-T055, fase preview sobre staging)
+
+Cuenta/equipo: `davides-projects-6878c5d7`. Dos proyectos, ambos con región de funciones `iad1` (cerca de us-east-2) fijada en el `vercel.json` de cada app.
+
+| Proyecto | Root Directory | Framework | Entrada |
+|---|---|---|---|
+| `dqr-web` | `apps/web` | Next.js | autodetectada |
+| `dqr-api` | `apps/api` | FastAPI (Python Functions) | `app/main.py` (variable `app`), dependencias desde `pyproject.toml`/`uv.lock` |
+
+Vincular y desplegar un preview (nunca `--prod` sin OK del usuario):
+```
+cd apps/api && pnpm dlx vercel link --yes --project dqr-api && pnpm dlx vercel deploy
+cd apps/web && pnpm dlx vercel link --yes --project dqr-web && pnpm dlx vercel deploy
+```
+`.vercel/` está git-ignorado.
+
+### Variables por entorno (sin valores)
+| Variable | Proyecto | Preview (staging) | Production |
+|---|---|---|---|
+| `SUPABASE_URL` | api | cargada (preview) | pendiente |
+| `SUPABASE_ANON_KEY` | api | cargada (preview) | pendiente |
+| `SUPABASE_SERVICE_ROLE_KEY` | api | cargada (preview, sensible) | pendiente |
+| `SUPABASE_JWT_SECRET` | api | vacía: la API verifica con JWKS | pendiente |
+| `IP_HASH_SALT` | api | cargada (preview; generada con `openssl rand -hex 32`) | pendiente, distinta |
+| `TRUSTED_PROXY_HOPS` | api | `1`, cargada (preview) | pendiente |
+| `PUBLIC_REDIRECT_BASE_URL` | api | cargada (preview) | dominio corto |
+| `NEXT_PUBLIC_SUPABASE_URL` | web | cargada (preview) | pendiente |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | web | cargada (preview; tipo config; la anon key es pública, sujeta a RLS) | pendiente |
+| `NEXT_PUBLIC_API_URL` | web | cargada (preview) | pendiente |
+
+Los secretos se cargan por pipe (`printf %s "$V" | vercel env add NAME preview`), sin escribirlos en archivos ni logs. `SUPABASE_SERVICE_ROLE_KEY` se usa como `apikey` y `Bearer`, por lo que debe ser la clave legacy `service_role` (JWT).
+
+### CORS
+No hace falta: `apps/web/lib/api.ts` llama a la API solo desde el servidor (Server Components/Actions), con el token de la cookie. Si algún día se llama desde el navegador, añadir `CORSMiddleware` con lista blanca del dominio de la web.
+
+### Deployment Protection
+Los previews de Vercel quedan tras SSO (responden 302). El redirector `/r/*` debe ser público, así que `dqr-api` necesita desactivar la protección del proyecto (solo ese proyecto, no la cuenta) o usar un bypass. **Paso pendiente: decisión del usuario (no tocar hasta entonces; no se crearon bypass ni se cambió la configuración).** Mientras tanto, verificar con `pnpm dlx vercel curl <ruta> --deployment <url>`.
+
+### Estado del preview (2026-10-06)
+- API: `https://dqr-83t9hq146-davides-projects-6878c5d7.vercel.app` (alias `https://dqr-api.vercel.app`): `/healthz` → 200.
+- Web: `https://dqr-48pgwp9bk-davides-projects-6878c5d7.vercel.app`: `/login` → 200.
+- `/r/AAAAAAA` → 503 genérico: la función `resolve_link` no existe aún en staging (PGRST202). Se espera 404 amable cuando el orquestador aplique las migraciones. La service key sí autentica contra PostgREST.
+
+### Promover a producción (pendiente de OK del usuario)
+1. Proyecto Supabase de producción creado y migrado (security-reviewer aprueba).
+2. Cargar las variables en el entorno `production` de cada proyecto, con valores propios y `IP_HASH_SALT` distinta.
+3. Dominio corto comprado y asignado a `dqr-api`; `PUBLIC_REDIRECT_BASE_URL` apunta a él.
+4. `vercel deploy --prod` (o merge a `main` si se conecta Git) en `dqr-api` y luego `dqr-web`.
+5. Verificar `/healthz`, `/r/AAAAAAA` (404 amable) y `/login`.
+
 ## Variables (`.env.example`)
 ```
 SUPABASE_URL=
