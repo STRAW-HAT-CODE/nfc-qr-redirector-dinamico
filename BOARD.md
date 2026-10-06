@@ -75,10 +75,10 @@ AGENT-10 scribe            Docs y tablero                          activo
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
 | DQR-T050 | Rate limiting | backend-api | DONE (qa PASS) | T023 |
-| DQR-T051 | Política de URLs / abuso | security-reviewer | TESTING (PR #36/#34 fusionados · seguridad APPROVED) | T020 |
+| DQR-T051 | Política de URLs / abuso | security-reviewer | DONE (qa PASS · seguridad APPROVED) | T020 |
 | DQR-T052 | audit_log | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T053 | Planes y límites | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
-| DQR-T054 | Consola Monky | frontend | TESTING (API + UI fusionadas) | T043, T053 |
+| DQR-T054 | Consola Monky | frontend | DONE (qa PASS) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
 | DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
 | DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (NO-GO→GO tras B1–B5: B1 en curso; B2–B5 config prod del usuario) | T050–T052, T054 |
