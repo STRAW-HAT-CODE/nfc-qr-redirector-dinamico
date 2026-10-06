@@ -4,16 +4,17 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(53);
+select plan(66);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres)
 -- -----------------------------------------------------------------------------
--- a1 owner A · a2 viewer A · a3 admin A · b1 owner B · pa platform admin · x sin org
+-- a1 owner A · a2 viewer A · a3 admin A · e1 editor A · b1 owner B · pa platform admin · x sin org
 insert into auth.users (id, email, aud, role) values
   ('00000000-0000-0000-0000-0000000000a1', 'a1@test.local', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000000a2', 'a2@test.local', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000000a3', 'a3@test.local', 'authenticated', 'authenticated'),
+  ('00000000-0000-0000-0000-0000000000e1', 'e1@test.local', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000000b1', 'b1@test.local', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000000ff', 'pa@test.local', 'authenticated', 'authenticated'),
   ('00000000-0000-0000-0000-0000000000cc', 'x@test.local',  'authenticated', 'authenticated');
@@ -117,6 +118,18 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
 select lives_ok($$ insert into public.memberships (org_id, user_id, role)
   values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000a3', 'admin') $$,
   'owner añade un admin');
+select lives_ok($$ insert into public.memberships (org_id, user_id, role)
+  values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000e1', 'editor') $$,
+  'owner añade un editor');
+select throws_ok($$ update public.organizations set created_at = '1999-01-01'
+  where id = current_setting('test.org_a')::uuid $$,
+  '42501', null, 'created_at de organizations es inmutable');
+select throws_ok($$ update public.organizations set slug = 'org-a-nuevo'
+  where id = current_setting('test.org_a')::uuid $$,
+  '42501', null, 'owner no puede cambiar el slug de la org');
+select throws_ok($$ insert into public.memberships (org_id, user_id, role, created_at)
+  values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000cc', 'viewer', '1999-01-01') $$,
+  '42501', null, 'created_at de memberships no se puede fijar al insertar');
 select pg_temp.logout();
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000a3');
@@ -126,7 +139,7 @@ select lives_ok($$ insert into public.memberships (org_id, user_id, role)
 select throws_ok($$ insert into public.memberships (org_id, user_id, role)
   values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000cc', 'owner') $$,
   '42501', null, 'admin no puede crear owners');
-select is((select count(*)::int from public.memberships), 3, 'admin ve todas las membresías de su org');
+select is((select count(*)::int from public.memberships), 4, 'admin ve todas las membresías de su org');
 select throws_ok($$ update public.memberships set role = 'owner'
   where user_id = '00000000-0000-0000-0000-0000000000a2' $$,
   '42501', null, 'admin no puede promover a owner');
@@ -166,6 +179,15 @@ select is((select role from public.memberships where user_id = '00000000-0000-00
 select is((select name from public.organizations where id = current_setting('test.org_a')::uuid),
   'Org A renombrada', 'viewer no puede editar la org');
 
+select pg_temp.login('00000000-0000-0000-0000-0000000000e1');
+select throws_ok($$ insert into public.memberships (org_id, user_id, role)
+  values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000cc', 'viewer') $$,
+  '42501', null, 'editor no puede añadir miembros');
+update public.organizations set name = 'editor-hack' where id = current_setting('test.org_a')::uuid;
+select pg_temp.logout();
+select isnt((select name from public.organizations where id = current_setting('test.org_a')::uuid),
+  'editor-hack', 'editor no puede editar la org');
+
 -- -----------------------------------------------------------------------------
 -- Aislamiento org A / org B
 -- -----------------------------------------------------------------------------
@@ -195,13 +217,30 @@ select is((select role from public.memberships
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000cc');
 select is((select count(*)::int from public.organizations), 0, 'usuario sin org no ve organizaciones');
+select throws_ok($$ insert into public.memberships (org_id, user_id, role)
+  values (current_setting('test.org_a')::uuid, '00000000-0000-0000-0000-0000000000cc', 'viewer') $$,
+  '42501', null, 'usuario ajeno no puede unirse a Org A como viewer');
+select throws_ok($$ insert into public.platform_admins (user_id)
+  values ('00000000-0000-0000-0000-0000000000cc') $$,
+  '42501', null, 'authenticated no puede auto-insertarse en platform_admins');
+select throws_ok($$ delete from public.platform_admins $$,
+  '42501', null, 'authenticated no puede borrar platform_admins');
 select pg_temp.logout();
+
+-- anon
+set local role anon;
+select throws_ok($$ select * from public.organizations $$, '42501', null, 'anon no lee organizations');
+select throws_ok($$ select * from public.memberships $$, '42501', null, 'anon no lee memberships');
+select throws_ok($$ select public.create_organization('x', 'anon-org') $$, '42501', null, 'anon no llama a create_organization');
+reset role;
 
 -- Platform admin
 select pg_temp.login('00000000-0000-0000-0000-0000000000ff');
 select is((select count(*)::int from public.organizations), 2, 'platform admin ve todas las orgs');
 select lives_ok($$ update public.organizations set plan = 'pro', status = 'suspended'
   where id = current_setting('test.org_b')::uuid $$, 'platform admin cambia plan/status');
+select lives_ok($$ update public.organizations set slug = 'org-b-nuevo'
+  where id = current_setting('test.org_b')::uuid $$, 'platform admin cambia el slug');
 select pg_temp.logout();
 select is((select plan from public.organizations where id = current_setting('test.org_b')::uuid),
   'pro', 'plan de Org B actualizado por platform admin');

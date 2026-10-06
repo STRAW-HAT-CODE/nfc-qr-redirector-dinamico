@@ -11,8 +11,8 @@
 --   * Nadie crea organizaciones con INSERT directo: solo vía la RPC
 --     public.create_organization(), que inserta la org y la membresía owner
 --     en la misma transacción.
---   * plan / status / limits solo los cambia un platform admin o el backend
---     con service role (trigger guard). id y created_at son inmutables.
+--   * plan / status / limits / slug solo los cambia un platform admin o el
+--     backend con service role (trigger guard). id y created_at son inmutables.
 --   * Anti-escalada: solo un owner (o platform admin) puede asignar el rol
 --     owner o modificar/quitar una membresía owner. Un admin gestiona
 --     viewer/editor/admin.
@@ -138,6 +138,8 @@ grant execute on function private.is_platform_admin() to authenticated, service_
 -- -----------------------------------------------------------------------------
 
 -- organizations: columnas privilegiadas e inmutables.
+-- Convención: ninguna RPC SECURITY DEFINER debe escribir plan/status/limits/slug
+-- a partir de la entrada del usuario (se saltaría esta guarda).
 -- SECURITY INVOKER a propósito: current_user es el rol real de la petición.
 create or replace function private.organizations_guard()
 returns trigger
@@ -155,10 +157,11 @@ begin
   if current_user in ('authenticated', 'anon')
      and (new.plan   is distinct from old.plan
        or new.status is distinct from old.status
-       or new.limits is distinct from old.limits)
+       or new.limits is distinct from old.limits
+       or new.slug   is distinct from old.slug)
      and not private.is_platform_admin()
   then
-    raise exception 'Solo un platform admin puede cambiar plan, status o limits'
+    raise exception 'Solo un platform admin puede cambiar plan, status, limits o slug'
       using errcode = '42501';
   end if;
 
@@ -191,6 +194,14 @@ begin
   perform 1 from public.organizations o where o.id = old.org_id for update;
   if not found then
     return coalesce(new, old);
+  end if;
+
+  -- En REPEATABLE READ la snapshot es antigua y el lock sobre la org no
+  -- detecta cambios concurrentes de owners: se rechaza explícitamente.
+  -- READ COMMITTED (lock + snapshot nueva) y SERIALIZABLE (SSI) son seguros.
+  if current_setting('transaction_isolation') = 'repeatable read' then
+    raise exception 'Quitar o degradar un owner requiere READ COMMITTED o SERIALIZABLE'
+      using errcode = '0A000', hint = 'last_owner_isolation';
   end if;
 
   if not exists (
@@ -256,8 +267,9 @@ revoke all on public.platform_admins from anon, authenticated;
 
 -- Sin INSERT: las orgs se crean con create_organization().
 grant select, update, delete on public.organizations to authenticated;
--- Solo el rol es editable; org_id/user_id no se pueden mover.
-grant select, insert, delete on public.memberships to authenticated;
+-- INSERT por columnas (created_at no falsificable); solo el rol es editable.
+grant select, delete on public.memberships to authenticated;
+grant insert (org_id, user_id, role) on public.memberships to authenticated;
 grant update (role) on public.memberships to authenticated;
 
 grant all on public.organizations, public.memberships, public.platform_admins to service_role;
