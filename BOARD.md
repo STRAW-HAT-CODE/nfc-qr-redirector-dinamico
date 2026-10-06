@@ -51,7 +51,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 |---|---|---|---|---|
 | DQR-T030 | Servicio generación QR | qr-nfc | DONE (qa PASS) | T020 |
 | DQR-T031 | Migración qr_designs + bucket | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
-| DQR-T032 | API diseño y descargas | qr-nfc | IN_REVIEW (PR #29 · seguridad) | T030, T031 |
+| DQR-T032 | API diseño y descargas | qr-nfc | IN_REVIEW (PR #29 · seguridad APPROVED, ajustes de integración) | T030, T031 |
 | DQR-T033 | Plantillas + Canva | qr-nfc | BACKLOG | T032 |
 | DQR-T034 | Migración nfc_tags | db-architect | DONE (qa PASS · seguridad APPROVED) | T018 |
 | DQR-T035 | API NFC + guía | qr-nfc | DONE (qa PASS) | T034, T021 |
@@ -62,12 +62,12 @@ AGENT-10 scribe            Docs y tablero                          activo
 |---|---|---|---|---|
 | DQR-T040 | Enriquecimiento + bots | analytics | DONE (qa PASS) | T023 |
 | DQR-T041 | Rollups pg_cron | db-architect | DONE (qa PASS · seguridad APPROVED) | T022 |
-| DQR-T042 | Endpoints de métricas | analytics | CHANGES_REQUESTED (PR #28 · RPC de desglose) | T040, T041 |
+| DQR-T042 | Endpoints de métricas | analytics | IN_REVIEW (PR #28 · RPC #32 fusionada, rebasando) | T040, T041 |
 | DQR-T043 | Next.js base + auth | frontend | DONE (qa PASS) | T010, T017 |
 | DQR-T044 | Pantallas de enlaces | frontend | DONE (qa PASS) | T043, T020 |
 | DQR-T045 | Diseñador de QR | frontend | BACKLOG | T044, T032 |
 | DQR-T046 | Pantalla NFC | frontend | DONE (qa PASS) | T044, T035 |
-| DQR-T047 | Analytics UI | frontend | BACKLOG | T042, T044 |
+| DQR-T047 | Analytics UI | frontend | IN_REVIEW (PR #31) | T042, T044 |
 | DQR-T048 | Miembros UI | frontend | DONE (qa PASS) | T043 |
 | DQR-T049 | E2E Playwright | qa | BACKLOG | T045, T047 |
 
@@ -75,10 +75,10 @@ AGENT-10 scribe            Docs y tablero                          activo
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
 | DQR-T050 | Rate limiting | backend-api | DONE (qa PASS) | T023 |
-| DQR-T051 | Política de URLs / abuso | security-reviewer | BACKLOG | T020 |
+| DQR-T051 | Política de URLs / abuso | security-reviewer | IN_PROGRESS (RPC de admin + blocklist) | T020 |
 | DQR-T052 | audit_log | db-architect | TESTING (PR #23 fusionado · seguridad APPROVED) | T018 |
-| DQR-T053 | Planes y límites | db-architect | IN_REVIEW (PR #30 · seguridad) | T013 |
-| DQR-T054 | Consola Monky | frontend | BACKLOG | T043, T053 |
+| DQR-T053 | Planes y límites | db-architect | TESTING (PR #30 fusionado · seguridad APPROVED) | T013 |
+| DQR-T054 | Consola Monky | frontend | IN_PROGRESS (API /v1/admin + consola) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | IN_PROGRESS (previews arriba · BD de staging cargada, /r 404 OK · protección: usuario) | T011 |
 | DQR-T056 | Observabilidad | devops | IN_PROGRESS | T055 |
 | DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | BACKLOG | T050–T052, T054 |
