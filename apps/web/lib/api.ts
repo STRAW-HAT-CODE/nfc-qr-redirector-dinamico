@@ -160,3 +160,55 @@ export async function getStatsBundle(orgId: string, range: { from: string; to: s
   ]);
   return { day, channel, country, device };
 }
+
+/* ── Diseño de QR (contrato de apps/api/app/schemas/qr.py) ───────────────── */
+
+export type EccLevel = "L" | "M" | "Q" | "H";
+export type QrFrame = "none" | "simple" | "rounded" | "label";
+export type ModuleStyle = "square" | "rounded" | "dots";
+
+export interface QrDesign {
+  link_id: string;
+  fg: string;
+  bg: string;
+  ecc_level: EccLevel;
+  frame: QrFrame;
+  module_style: ModuleStyle;
+  margin: number;
+  frame_text: string | null;
+  has_logo: boolean;
+  is_default: boolean;
+  updated_at: string | null;
+  warnings: string[];
+}
+
+export const getQrDesign = (linkId: string) => api<QrDesign>(`/v1/links/${encodeURIComponent(linkId)}/design`);
+
+/**
+ * Petición cruda (binaria/multipart) a la API con el token del servidor.
+ * Solo para Route Handlers: devuelve la Response sin interpretar. El token nunca sale al navegador.
+ */
+export async function apiRaw(
+  path: string,
+  init: { method?: "GET" | "POST" | "DELETE"; body?: BodyInit; contentType?: string | null } = {},
+): Promise<Response> {
+  const supabase = await createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return new Response(null, { status: 401 });
+  const headers: Record<string, string> = { Authorization: `Bearer ${session.access_token}` };
+  const orgId = await getActiveOrgId();
+  if (orgId) headers["X-Org-Id"] = orgId;
+  if (init.contentType) headers["Content-Type"] = init.contentType;
+  try {
+    return await fetch(`${baseUrl()}${path}`, {
+      method: init.method ?? "GET",
+      headers,
+      body: init.body,
+      cache: "no-store",
+    });
+  } catch {
+    return Response.json({ error: { code: "network_error", message: "No se pudo conectar con la API." } }, { status: 502 });
+  }
+}
