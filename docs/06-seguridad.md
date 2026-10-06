@@ -40,3 +40,10 @@ security-reviewer aprueba toda migración y registra hallazgos aquí.
 | 2026-10-05 | DQR-T018 | H5 INFO: T021 decide con los datos crudos de `resolve_link` → tests de archived/paused/no iniciado/vencido/org suspendida; percent-encode de Location; definir el comportamiento de un enlace archivado | Info / T021 · product |
 | 2026-10-05 | DQR-T018 | H6 INFO: el DELETE real borra el historial en cascada → audit_log (T052) debe registrar el borrado con el último destino | Info / T052 |
 | 2026-10-05 | DQR-T018 | H7 INFO: oráculo de existencia de slug (23505, aceptable); hosts con DNS a loopback (`*.nip.io`) aceptados (sin impacto mientras nada haga fetch del destino); `gen_slug`/`is_safe_url` ejecutables por authenticated (`private` no está expuesto en la Data API); `resolve_link` podría ser SECURITY INVOKER | Info |
+| 2026-10-05 | DQR-T022 | H1 BAJA: `tag_id` sin validar (viene de `?t=` y lo controla el atacante); romperá la FK de T034 → T023 no lo pasa hasta T034; T034: FK compuesta (tag_id, link_id) NOT VALID + limpieza + VALIDATE | Backlog / T023 · T034 |
+| 2026-10-05 | DQR-T022 | H2 BAJA: `scan_clip` deja pasar caracteres de formato Unicode (U+202E, U+200B, U+2028, U+FEFF, NBSP) → regex ampliada y espacios normalizados | Resuelto (migración `20261006024532_scan_clip_hardening`) |
+| 2026-10-05 | DQR-T022 | H3 INFO: el saneado aplica la regex a toda la entrada (5 MB = 0,68 s) → `left(p, p_max*4)` antes | Resuelto (migración `20261006024532_scan_clip_hardening`) |
+| 2026-10-05 | DQR-T022 | H4 BAJA: se guarda el referer completo con query (PII/tokens) → guardar solo el origen; el frontend no lo pinta como href | Backlog / T023 · T040 |
+| 2026-10-05 | DQR-T022 | H5 INFO: el CHECK de ip_hash no distingue una IPv6 en hex → HMAC-SHA256 (64 hex) con sal diaria en T023 | Info / T023 |
+| 2026-10-05 | DQR-T022 | H6 INFO: `record_scan` registra escaneos de enlaces pausados/archivados u orgs suspendidas → definir si cuentan | Info / product · T023 |
+| 2026-10-05 | DQR-T022 | H7 INFO: service_role puede UPDATE/DELETE/TRUNCATE; UNIQUE con ACCESS EXCLUSIVE; RLS por fila → rollups; cascade largo | Info |
