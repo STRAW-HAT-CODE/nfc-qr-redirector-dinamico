@@ -212,3 +212,77 @@ export async function apiRaw(
     return Response.json({ error: { code: "network_error", message: "No se pudo conectar con la API." } }, { status: 502 });
   }
 }
+
+// ---- Plataforma (Consola Monky) · /v1/me y /v1/admin/* -------------------------------------
+
+export interface Me {
+  user_id: string;
+  email: string | null;
+  is_platform_admin: boolean;
+}
+
+export const getMe = () => api<Me>("/v1/me", { orgId: false });
+
+export type PlanLimits = Partial<
+  Record<"max_links" | "max_members" | "max_nfc_tags" | "max_logos" | "scans_retention_days", number | null>
+>;
+
+export interface AdminOrg {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  status: "active" | "suspended";
+  limits: PlanLimits | null;
+  created_at: string;
+  members: number;
+  links: number;
+  scans_30d: number;
+}
+
+export interface BlockedDomain {
+  domain: string;
+  created_at: string;
+}
+
+export interface AdminLink {
+  id: string;
+  org_id: string;
+  org_name: string;
+  slug: string;
+  name: string;
+  destination_url: string;
+  status: "active" | "paused" | "archived";
+  suspended_at: string | null;
+  suspended_reason: string | null;
+  created_at: string;
+}
+
+export const ADMIN_PAGE_SIZE = 50;
+
+export const adminListOrgs = (q: string, offset = 0) => {
+  const sp = new URLSearchParams({ limit: String(ADMIN_PAGE_SIZE), offset: String(offset) });
+  if (q) sp.set("q", q);
+  return api<AdminOrg[]>(`/v1/admin/orgs?${sp}`, { orgId: false });
+};
+
+export const adminUpdateOrg = (id: string, body: { plan?: string; status?: "active" | "suspended"; limits?: PlanLimits }) =>
+  api<Org>(`/v1/admin/orgs/${id}`, { method: "PATCH", body, orgId: false });
+
+export const adminListBlockedDomains = () => api<BlockedDomain[]>("/v1/admin/blocked-domains", { orgId: false });
+
+export const adminBlockDomain = (domain: string) =>
+  api<void>("/v1/admin/blocked-domains", { method: "POST", body: { domain }, orgId: false });
+
+export const adminUnblockDomain = (domain: string) =>
+  api<void>("/v1/admin/blocked-domains", { method: "DELETE", body: { domain }, orgId: false });
+
+export const adminFindLink = (slug: string) =>
+  api<AdminLink[]>(`/v1/admin/links?slug=${encodeURIComponent(slug)}`, { orgId: false });
+
+export const adminSuspendLink = (id: string, suspended: boolean, reason?: string) =>
+  api<unknown>(`/v1/admin/links/${id}/suspend`, {
+    method: "PATCH",
+    body: reason ? { suspended, reason } : { suspended },
+    orgId: false,
+  });

@@ -1,4 +1,5 @@
-import { LogOut } from "lucide-react";
+import { LogOut, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 
 import { logout } from "@/app/auth/actions";
 import { ThemeToggleItems } from "@/components/layout/theme-toggle-items";
@@ -11,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-export function UserMenu({ email }: { email: string }) {
+export function UserMenu({ email, isPlatformAdmin = false }: { email: string; isPlatformAdmin?: boolean }) {
   const initial = (email[0] ?? "?").toUpperCase();
   return (
     <DropdownMenu>
@@ -27,6 +28,17 @@ export function UserMenu({ email }: { email: string }) {
       <DropdownMenuContent align="start" side="top">
         <DropdownMenuLabel className="truncate font-normal text-muted-foreground">{email}</DropdownMenuLabel>
         <DropdownMenuSeparator />
+        {isPlatformAdmin ? (
+          <>
+            <DropdownMenuItem asChild>
+              <Link href="/platform">
+                <ShieldCheck aria-hidden="true" />
+                Consola Monky
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         <ThemeToggleItems />
         <DropdownMenuSeparator />
         <form action={logout}>
