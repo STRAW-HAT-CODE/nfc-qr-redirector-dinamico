@@ -119,3 +119,12 @@ export async function requireActiveOrg() {
 
 const ROLE_RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2, owner: 3 };
 export const hasRole = (role: Role, min: Role) => ROLE_RANK[role] >= ROLE_RANK[min];
+
+export interface Member {
+  org_id: string;
+  user_id: string;
+  role: Role;
+  created_at: string;
+}
+
+export const listMembers = (orgId: string) => api<Member[]>(`/v1/orgs/${orgId}/members`, { orgId });
