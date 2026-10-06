@@ -50,7 +50,7 @@ class Backend:
 
     def memberships(self, req: httpx.Request) -> httpx.Response:
         self._auth(req)
-        return httpx.Response(200, json=[{"role": self.role}] if self.role else [])
+        return httpx.Response(200, json=self.role)
 
     def links(self, req: httpx.Request) -> httpx.Response:
         self._auth(req)
@@ -127,7 +127,7 @@ def make(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
 
         def build(role: str | None = "editor") -> Backend:
             b = Backend(role)
-            mock.get(f"{SB}/rest/v1/memberships").mock(side_effect=b.memberships)
+            mock.post(f"{SB}/rest/v1/rpc/my_effective_role").mock(side_effect=b.memberships)
             mock.get(f"{SB}/rest/v1/dynamic_links").mock(side_effect=b.links)
             mock.route(url__startswith=f"{SB}/rest/v1/qr_designs").mock(side_effect=b.designs)
             mock.route(url__startswith=f"{SB}/storage/v1/object/").mock(side_effect=b.storage)

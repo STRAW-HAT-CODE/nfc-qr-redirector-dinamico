@@ -226,8 +226,8 @@ def api(request: pytest.FixtureRequest) -> Iterator[dict[str, Any]]:
         return httpx.Response(200, json=[{"id": "t"}] if state["nfc"] else [])
 
     with respx.mock(assert_all_called=False) as mock:
-        mock.get(f"{SB}/rest/v1/memberships").mock(
-            return_value=httpx.Response(200, json=[{"role": "viewer"}])
+        mock.post(f"{SB}/rest/v1/rpc/my_effective_role").mock(
+            return_value=httpx.Response(200, json="viewer")
         )
         mock.get(f"{SB}/rest/v1/dynamic_links").mock(
             side_effect=lambda r: httpx.Response(
