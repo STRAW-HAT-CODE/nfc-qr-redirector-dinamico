@@ -13,6 +13,11 @@
 --   * record_scan: misma firma y mismos grants. Si p_tag_id no es una etiqueta
 --     del enlace, guarda tag_id NULL en vez de fallar (el escaneo nunca se
 --     pierde).
+--   * Orden (revisión T034 H1): 1) nfc_tags + RLS; 2) record_scan nuevo, antes
+--     de tocar la FK, para que ningún INSERT concurrente guarde un tag ajeno;
+--     3) LOCK de scan_events; 4) limpieza, FK NOT VALID, VALIDATE e índice.
+--     A escala (millones de eventos) convendría VALIDATE y CREATE INDEX
+--     CONCURRENTLY en una migración aparte; hoy la tabla es pequeña.
 --
 -- Decisiones:
 --   * Coherencia de org: FK compuesta (link_id, org_id) → dynamic_links
@@ -26,7 +31,11 @@
 --     CHECK: 4, 7 o 10 bytes (8, 14 o 20 hex; ISO/IEC 14443-3 single/double/
 --     triple size). Único por org cuando no es NULL (unique (org_id, uid); los
 --     NULL no colisionan).
---   * label 1..80 y location ≤ 120 (opcional), sin caracteres de control.
+--   * label 1..80 y location ≤ 120 (opcional), sin caracteres de control ni
+--     de formato Unicode (los mismos rangos que private.scan_clip: U+00AD,
+--     U+200B..U+200F, U+2028..U+202E, U+2060..U+206F, U+FEFF; revisión T034
+--     H2). Se rechazan con CHECK (23514) en vez de quitarlos: scan_clip solo
+--     lo ejecuta service_role y el trigger corre con el rol de quien escribe.
 --     location vacía/solo espacios → NULL (trigger).
 --   * id, link_id, org_id y created_at son inmutables para todos los roles
 --     (trigger), además de no tener grant de UPDATE para authenticated.
@@ -55,11 +64,13 @@ create table public.nfc_tags (
   constraint nfc_tags_org_uid_key unique (org_id, uid),
   constraint nfc_tags_label_check
     check (char_length(btrim(label)) between 1 and 80
-           and label !~ '[[:cntrl:]]'),
+           and label !~ '[[:cntrl:]]'
+           and label !~ E'[\u00AD\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]'),
   constraint nfc_tags_location_check
     check (location is null
            or (char_length(btrim(location)) between 1 and 120
-               and location !~ '[[:cntrl:]]')),
+               and location !~ '[[:cntrl:]]'
+               and location !~ E'[\u00AD\u200B-\u200F\u2028-\u202E\u2060-\u206F\uFEFF]')),
   constraint nfc_tags_uid_check
     check (uid is null or uid ~ '^([0-9A-F]{8}|[0-9A-F]{14}|[0-9A-F]{20})$')
 );
@@ -161,38 +172,6 @@ create policy nfc_tags_delete
   );
 
 -- -----------------------------------------------------------------------------
--- scan_events.tag_id → nfc_tags (H1 de DQR-T022)
--- -----------------------------------------------------------------------------
--- 1) Limpieza: tag_id que no es una etiqueta del mismo enlace → NULL.
-update public.scan_events e
-set tag_id = null
-where e.tag_id is not null
-  and not exists (
-    select 1 from public.nfc_tags t
-    where t.id = e.tag_id and t.link_id = e.link_id
-  );
-
--- 2) FK compuesta: el evento solo apunta a etiquetas de su enlace. Borrar la
---    etiqueta deja tag_id en NULL (el escaneo se conserva).
-alter table public.scan_events
-  add constraint scan_events_tag_link_fkey
-    foreign key (tag_id, link_id)
-    references public.nfc_tags (id, link_id)
-    on delete set null (tag_id)
-    not valid;
-
-alter table public.scan_events validate constraint scan_events_tag_link_fkey;
-
--- Cubre la FK (set null al borrar una etiqueta) y las estadísticas por etiqueta.
--- Parcial: la mayoría de eventos no llevan etiqueta.
-create index scan_events_tag_occurred_idx
-  on public.scan_events (tag_id, occurred_at desc)
-  where tag_id is not null;
-
-comment on column public.scan_events.tag_id is
-  'Etiqueta NFC (ADR-0004, ?t=). FK (tag_id, link_id) → nfc_tags (id, link_id) on delete set null. Solo con channel = nfc.';
-
--- -----------------------------------------------------------------------------
 -- record_scan: tag ajeno o inexistente → tag_id NULL (misma firma y grants)
 -- -----------------------------------------------------------------------------
 -- Errores:
@@ -289,3 +268,41 @@ revoke execute on function
 grant execute on function
   public.record_scan(uuid, uuid, text, uuid, text, text, text, text, text, text, boolean)
   to service_role;
+
+-- -----------------------------------------------------------------------------
+-- scan_events.tag_id → nfc_tags (H1 de DQR-T022)
+-- -----------------------------------------------------------------------------
+-- 0) Bloqueo: desde aquí hasta el commit nadie escribe en scan_events (los
+--    INSERT de record_scan esperan y luego se validan contra la FK nueva con
+--    la función nueva, que ya no guarda tags ajenos). SHARE ROW EXCLUSIVE es
+--    el mismo modo que toma ADD FOREIGN KEY; las lecturas siguen permitidas.
+lock table public.scan_events in share row exclusive mode;
+
+-- 1) Limpieza: tag_id que no es una etiqueta del mismo enlace → NULL.
+update public.scan_events e
+set tag_id = null
+where e.tag_id is not null
+  and not exists (
+    select 1 from public.nfc_tags t
+    where t.id = e.tag_id and t.link_id = e.link_id
+  );
+
+-- 2) FK compuesta: el evento solo apunta a etiquetas de su enlace. Borrar la
+--    etiqueta deja tag_id en NULL (el escaneo se conserva).
+alter table public.scan_events
+  add constraint scan_events_tag_link_fkey
+    foreign key (tag_id, link_id)
+    references public.nfc_tags (id, link_id)
+    on delete set null (tag_id)
+    not valid;
+
+alter table public.scan_events validate constraint scan_events_tag_link_fkey;
+
+-- Cubre la FK (set null al borrar una etiqueta) y las estadísticas por etiqueta.
+-- Parcial: la mayoría de eventos no llevan etiqueta.
+create index scan_events_tag_occurred_idx
+  on public.scan_events (tag_id, occurred_at desc)
+  where tag_id is not null;
+
+comment on column public.scan_events.tag_id is
+  'Etiqueta NFC (ADR-0004, ?t=). FK (tag_id, link_id) → nfc_tags (id, link_id) on delete set null. Solo con channel = nfc.';

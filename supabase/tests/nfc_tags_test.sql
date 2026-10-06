@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(94);
+select plan(96);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres)
@@ -204,6 +204,13 @@ select throws_ok($$ insert into public.nfc_tags (link_id, org_id, label)
 select throws_ok($$ insert into public.nfc_tags (link_id, org_id, label)
   values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', E'Mesa\x01') $$,
   '23514', null, 'label con caracteres de control rechazado');
+select throws_ok($$ insert into public.nfc_tags (link_id, org_id, label)
+  values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', E'Mesa \u202Egnp.exe') $$,
+  '23514', null, 'label con formato Unicode (RLO U+202E) rechazado');
+select throws_ok($$ insert into public.nfc_tags (link_id, org_id, label, location)
+  values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', 'X',
+          E'Sala\u200B\uFEFF') $$,
+  '23514', null, 'location con formato Unicode (ZWSP, BOM) rechazada');
 select throws_ok($$ insert into public.nfc_tags (link_id, org_id, label, location)
   values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', 'X',
           repeat('l', 121)) $$,
