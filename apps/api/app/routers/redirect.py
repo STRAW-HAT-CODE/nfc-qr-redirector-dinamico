@@ -138,7 +138,7 @@ async def redirect(
 
     try:
         link = rows[0]
-        if link["org_status"] != "active":
+        if link["org_status"] != "active" or link.get("suspended_at"):
             response = _unavailable(head)
         elif _is_live(link, datetime.now(UTC)):
             response = _redirect(link["destination_url"])

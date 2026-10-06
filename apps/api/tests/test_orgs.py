@@ -49,8 +49,6 @@ class FakeDB:
             raise self.errors[op]
 
     async def select(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
-        if params.get("select") == "role" and params.get("user_id") == f"eq.{USER_ID}":
-            return [{"role": self.my_role}] if self.my_role else []  # fetch_role
         if "organizations" in params.get("select", ""):
             return [{"role": "owner", "organizations": ORG_ROW}]
         if params.get("select") == "user_id":
@@ -80,6 +78,8 @@ class FakeDB:
         return [self.members.pop(uid)]
 
     async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
+        if fn == "my_effective_role":
+            return self.my_role
         self.rpc_calls.append((fn, args))
         self._maybe_raise("rpc")
         return ORG_ROW

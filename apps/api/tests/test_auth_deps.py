@@ -60,11 +60,11 @@ def make_token(
 class FakeDB:
     def __init__(self, role: str | None) -> None:
         self.role = role
-        self.calls: list[tuple[str, dict[str, str]]] = []
+        self.calls: list[tuple[str, dict[str, Any]]] = []
 
-    async def select(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
-        self.calls.append((table, params))
-        return [{"role": self.role}] if self.role else []
+    async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
+        self.calls.append((fn, args))
+        return self.role
 
 
 @pytest.fixture
@@ -243,10 +243,9 @@ def test_role_matrix(client: TestClient, fake_db: FakeDB, have: Role, need: Role
 
 def test_membership_query_scoped(client: TestClient, fake_db: FakeDB) -> None:
     client.get("/needs/viewer", headers=headers())
-    table, params = fake_db.calls[0]
-    assert table == "memberships"
-    assert params["org_id"] == f"eq.{ORG_ID}"
-    assert params["user_id"] == f"eq.{USER_ID}"
+    fn, args = fake_db.calls[0]
+    assert fn == "my_effective_role"
+    assert args == {"p_org_id": ORG_ID}
 
 
 # --- db.py y errores ---------------------------------------------------------

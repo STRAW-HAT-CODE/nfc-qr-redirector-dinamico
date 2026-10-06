@@ -124,6 +124,22 @@ def test_suspended_org_is_unavailable_even_with_fallback(client: TestClient) -> 
 
 
 @respx.mock
+def test_suspended_link_is_unavailable_even_with_fallback(client: TestClient) -> None:
+    mock_rows([row(suspended_at=iso(-1), fallback_url=FALLBACK)])
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 200
+    assert "location" not in r.headers
+    assert "no está disponible" in r.text
+    assert_safe(r)
+
+
+@respx.mock
+def test_null_suspended_at_redirects(client: TestClient) -> None:
+    mock_rows([row(suspended_at=None)])
+    assert client.get(f"/r/{SLUG}").status_code == 302
+
+
+@respx.mock
 def test_unknown_slug_is_friendly_404(client: TestClient) -> None:
     mock_rows([])
     r = client.get(f"/r/{SLUG}")

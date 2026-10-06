@@ -47,13 +47,13 @@ class FakeDB:
 
     async def select(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
         self.selects.append((table, params))
-        if table == "memberships":
-            return [{"role": self.role}] if self.role else []
         if table == "dynamic_links":
             return [{"id": LINK}] if params["id"] == f"eq.{LINK}" else []
         return self.events
 
     async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
+        if fn == "my_effective_role":
+            return self.role
         self.rpcs.append((fn, args))
         if fn.endswith("_breakdown"):
             return self.events

@@ -51,10 +51,12 @@ class FakeDB:
             rows = [r for r in rows if term in r["name"].lower()]
         return rows
 
+    async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
+        assert fn == "my_effective_role"
+        return self.role
+
     async def select(self, table: str, params: dict[str, str]) -> list[dict[str, Any]]:
         self.selects.append((table, params))
-        if table == "memberships":
-            return [{"role": self.role}] if self.role else []
         rows = self.links if table == "dynamic_links" else self.history
         if not self._can("viewer"):
             return []
