@@ -1,6 +1,7 @@
 """Tests de /v1/.../stats sin red: BD falsa (RPC + scan_events) y un test respx del cliente real."""
 
 import asyncio
+import json
 from collections.abc import Iterator
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
@@ -54,6 +55,8 @@ class FakeDB:
 
     async def rpc(self, fn: str, args: dict[str, Any]) -> Any:
         self.rpcs.append((fn, args))
+        if fn.endswith("_breakdown"):
+            return self.events
         return ROWS
 
 
@@ -102,31 +105,39 @@ def test_group_channel(client: TestClient) -> None:
     assert {p["key"]: p["scans"] for p in b["series"]} == {"qr": 3, "nfc": 3, "direct": 2}
 
 
-def test_group_country_top_and_unknown(db: FakeDB) -> None:
-    events = [
-        {"country": f"{chr(65 + i // 26)}{chr(65 + i % 26)}", "scans": 30 - i} for i in range(22)
+def test_group_country_uses_breakdown_rpc(db: FakeDB) -> None:
+    db.events = [
+        {"value": "EC", "scans": 9, "unique_visitors": 7},
+        {"value": "other", "scans": 3, "unique_visitors": 3},
+        {"value": None, "scans": 4, "unique_visitors": 4},
     ]
-    events.append({"country": None, "scans": 4})
-    db.events = events
     for c in make(db):
         b = c.get(f"/v1/links/{LINK}/stats?{Q}&group=country", headers=H).json()
-    keys = [p["key"] for p in b["series"]]
-    assert len(keys) == 22 and keys[-2:] == ["other", "unknown"]
-    assert b["series"][-2]["scans"] == (30 - 20) + (30 - 21)
-    assert b["series"][-1]["scans"] == 4
-    _, params = db.selects[-1]
-    assert params["is_bot"] == "eq.false" and params["link_id"] == f"eq.{LINK}"
-    assert params["select"] == "country,scans:count()"
+    assert [(p["key"], p["scans"], p["unique_visitors"]) for p in b["series"]] == [
+        ("EC", 9, 7),
+        ("other", 3, 3),
+        ("unknown", 4, 4),
+    ]
+    assert db.rpcs[-1] == (
+        "link_breakdown",
+        {"p_link_id": LINK, "p_from": "2026-10-01", "p_to": "2026-10-04", "p_dimension": "country"},
+    )
+    assert not [t for t, _ in db.selects if t == "scan_events"]
 
 
 def test_group_device_org(db: FakeDB) -> None:
-    db.events = [{"device": "mobile", "scans": 6}, {"device": "desktop", "scans": 2}]
+    db.events = [
+        {"value": "mobile", "scans": 6, "unique_visitors": 5},
+        {"value": "desktop", "scans": 2, "unique_visitors": 2},
+    ]
     for c in make(db):
         r = c.get(f"/v1/orgs/{ORG}/stats?{Q}&group=device")
     b = r.json()
     assert [(p["key"], p["scans"]) for p in b["series"]] == [("mobile", 6), ("desktop", 2)]
-    assert db.rpcs[0][0] == "org_stats"
-    assert "link_id" not in db.selects[-1][1]
+    assert db.rpcs[-1] == (
+        "org_breakdown",
+        {"p_org_id": ORG, "p_from": "2026-10-01", "p_to": "2026-10-04", "p_dimension": "device"},
+    )
 
 
 def test_org_path_mismatch_header(client: TestClient) -> None:
@@ -172,31 +183,35 @@ def test_link_of_other_org_404(client: TestClient) -> None:
 
 
 @respx.mock
-def test_userdb_aggregate_query_params() -> None:
-    asyncio.run(_userdb_aggregate())
+def test_userdb_breakdown_rpc() -> None:
+    asyncio.run(_userdb_breakdown())
 
 
-async def _userdb_aggregate() -> None:
-    """El cliente real envía el JWT y los filtros de agregación esperados."""
+async def _userdb_breakdown() -> None:
+    """El cliente real llama a la RPC con el JWT del usuario."""
+    from app.schemas.stats import StatsGroup
     from app.services.stats import StatsService
 
-    route = respx.get("https://x.supabase.co/rest/v1/scan_events").mock(
-        return_value=httpx.Response(200, json=[{"device": "mobile", "scans": 3}])
+    bd = respx.post("https://x.supabase.co/rest/v1/rpc/org_breakdown").mock(
+        return_value=httpx.Response(
+            200, json=[{"value": "mobile", "scans": 3, "unique_visitors": 2}]
+        )
     )
-    rpc = respx.post("https://x.supabase.co/rest/v1/rpc/org_stats").mock(
+    respx.post("https://x.supabase.co/rest/v1/rpc/org_stats").mock(
         return_value=httpx.Response(200, json=ROWS)
     )
     udb = UserDB(Settings(supabase_url="https://x.supabase.co", supabase_anon_key="k"), "jwt")
+    org = uuid4()
     out = await StatsService(udb).stats(
-        group=app_group("device"), frm=date(2026, 10, 1), to=date(2026, 10, 4), org_id=uuid4()
+        group=StatsGroup.device, frm=date(2026, 10, 1), to=date(2026, 10, 4), org_id=org
     )
     await udb.aclose()
-    assert rpc.called and route.calls[0].request.headers["authorization"] == "Bearer jwt"
-    assert "is_bot=eq.false" in str(route.calls[0].request.url)
-    assert out.series[0].key == "mobile"
-
-
-def app_group(v: str) -> Any:
-    from app.schemas.stats import StatsGroup
-
-    return StatsGroup(v)
+    req = bd.calls[0].request
+    assert req.headers["authorization"] == "Bearer jwt"
+    assert json.loads(req.content) == {
+        "p_from": "2026-10-01",
+        "p_to": "2026-10-04",
+        "p_dimension": "device",
+        "p_org_id": str(org),
+    }
+    assert out.series[0].key == "mobile" and out.series[0].unique_visitors == 2

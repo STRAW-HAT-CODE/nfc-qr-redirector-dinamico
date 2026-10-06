@@ -1,6 +1,5 @@
 """Métricas: rollups vía RPC (day/channel) y agregación sobre scan_events (country/device)."""
 
-from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from uuid import UUID
@@ -13,7 +12,6 @@ from app.schemas.stats import StatsGroup, StatsOut, StatsPoint, StatsTotals
 
 DEFAULT_DAYS = 30
 MAX_DAYS = 366
-TOP_N = 20
 CHANNELS = ("qr", "nfc", "direct")
 
 
@@ -27,20 +25,6 @@ def resolve_range(frm: date | None, to: date | None) -> tuple[date, date]:
     if (end - start).days + 1 > MAX_DAYS:
         raise ApiError(422, "invalid_range", f"El rango máximo es de {MAX_DAYS} días")
     return start, end
-
-
-def _top(counts: dict[str, int]) -> list[StatsPoint]:
-    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-    named = [(k, v) for k, v in ranked if k != "unknown"]
-    unknown = counts.get("unknown", 0)
-    head, tail = named[:TOP_N], named[TOP_N:]
-    out = [StatsPoint(key=k, scans=v) for k, v in head]
-    other = sum(v for _, v in tail)
-    if other:
-        out.append(StatsPoint(key="other", scans=other))
-    if unknown:
-        out.append(StatsPoint(key="unknown", scans=unknown))
-    return out
 
 
 class StatsService:
@@ -125,21 +109,23 @@ class StatsService:
     async def _by_column(
         self, column: str, frm: date, to: date, link_id: UUID | None, org_id: UUID
     ) -> list[StatsPoint]:
-        """Agrega scan_events por columna (RLS del usuario; sin bots).
+        """Desglose por country/device vía RPC link_breakdown/org_breakdown.
 
-        Usa agregados de PostgREST (`select=col,scans:count()`): devuelve una fila por valor.
+        La BD aplica RLS (SECURITY INVOKER), excluye bots y devuelve top 20 + other + unknown.
         """
-        end = to + timedelta(days=1)
-        params: dict[str, str] = {
-            "select": f"{column},scans:count()",
-            "org_id": f"eq.{org_id}",
-            "is_bot": "eq.false",
-            "and": f"(occurred_at.gte.{frm}T00:00:00Z,occurred_at.lt.{end}T00:00:00Z)",
-        }
+        args: dict[str, Any] = {"p_from": str(frm), "p_to": str(to), "p_dimension": column}
         if link_id is not None:
-            params["link_id"] = f"eq.{link_id}"
-        rows = await self._run(self._db.select("scan_events", params))
-        counts: dict[str, int] = defaultdict(int)
-        for r in rows:
-            counts[str(r.get(column) or "unknown")] += int(r["scans"])
-        return _top(counts)
+            fn, args["p_link_id"] = "link_breakdown", str(link_id)
+        else:
+            fn, args["p_org_id"] = "org_breakdown", str(org_id)
+        rows = await self._run(self._db.rpc(fn, args))
+        return [
+            StatsPoint(
+                key=str(r.get("value") or "unknown"),
+                scans=int(r["scans"]),
+                unique_visitors=int(r["unique_visitors"])
+                if r.get("unique_visitors") is not None
+                else None,
+            )
+            for r in rows
+        ]
