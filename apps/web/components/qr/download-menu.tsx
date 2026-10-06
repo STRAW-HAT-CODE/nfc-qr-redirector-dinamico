@@ -20,7 +20,7 @@ export function qrUrl(linkId: string, format: "png" | "svg" | "pdf", opts: { siz
 
 export function DownloadMenu({ linkId, dirty, template }: { linkId: string; dirty: boolean; template?: string }) {
   const item = (href: string, label: string) => (
-    <DropdownMenuItem asChild>
+    <DropdownMenuItem key={href} asChild>
       <a href={href} download>
         <Download aria-hidden="true" /> {label}
       </a>
