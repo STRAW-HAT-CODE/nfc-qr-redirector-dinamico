@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(88);
+select plan(123);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres)
@@ -78,15 +78,17 @@ insert into t051_funcs values
   ('public.admin_block_domain(text)'),
   ('public.admin_unblock_domain(text)'),
   ('public.admin_set_link_status(uuid, public.link_status)'),
-  ('public.admin_find_link(text)');
+  ('public.admin_find_link(text)'),
+  ('public.am_i_platform_admin()'),
+  ('public.admin_suspend_link(uuid, boolean, text)');
 
 select is(
   (select count(*) from t051_funcs f join pg_proc p on p.oid = f.sig
     where p.prosecdef and p.proconfig = array['search_path=""']),
-  8::bigint, 'las 8 RPC son SECURITY DEFINER con search_path vacío');
+  10::bigint, 'las 10 RPC son SECURITY DEFINER con search_path vacío');
 select is(
   (select count(*) from t051_funcs f where has_function_privilege('authenticated', f.sig, 'execute')),
-  8::bigint, 'authenticated puede ejecutar las 8 RPC');
+  10::bigint, 'authenticated puede ejecutar las 10 RPC');
 select is(
   (select count(*) from t051_funcs f where has_function_privilege('anon', f.sig, 'execute')),
   0::bigint, 'anon no puede ejecutar ninguna');
@@ -118,6 +120,10 @@ select throws_ok(
   '42501', null, 'owner: admin_set_link_status (su propio enlace) → 42501');
 select throws_ok($$select * from public.admin_find_link('AbC1234')$$,
   '42501', null, 'owner: admin_find_link → 42501');
+select throws_ok(
+  $$select public.admin_suspend_link('a1000000-0000-0000-0000-000000000001', true)$$,
+  '42501', null, 'owner: admin_suspend_link (su propio enlace) → 42501');
+select is(public.am_i_platform_admin(), false, 'am_i_platform_admin: owner → false');
 
 select is(public.my_effective_role('0000000a-0000-0000-0000-000000000000'), 'owner'::public.org_role,
   'my_effective_role: owner de A → owner');
@@ -167,6 +173,7 @@ select is(public.my_effective_role('0000000b-0000-0000-0000-000000000000'), 'own
   'my_effective_role: platform admin en B → owner');
 select is(public.my_effective_role('0000dead-0000-0000-0000-000000000000'), null::public.org_role,
   'my_effective_role: platform admin en org inexistente → NULL');
+select is(public.am_i_platform_admin(), true, 'am_i_platform_admin: platform admin → true');
 
 -- -----------------------------------------------------------------------------
 -- Platform admin: admin_list_orgs
@@ -297,6 +304,12 @@ select throws_ok($$select public.admin_block_domain('')$$,
   '23514', null, 'admin_block_domain: vacío → 23514');
 select throws_ok($$select public.admin_block_domain(null)$$,
   '23514', null, 'admin_block_domain: NULL → 23514');
+select throws_ok($$select public.admin_block_domain('com')$$,
+  '23514', null, 'admin_block_domain: TLD solo → 23514 (H3)');
+select throws_ok($$select public.admin_block_domain('.COM.')$$,
+  '23514', null, 'admin_block_domain: TLD con puntos extremos → 23514 (H3)');
+select throws_ok($$select public.admin_block_domain('localhost')$$,
+  '23514', null, 'admin_block_domain: localhost → 23514 (H3)');
 select throws_ok($$select public.admin_block_domain(repeat('a', 60) || '.' || repeat('b.', 100) || 'com')$$,
   '23514', null, 'admin_block_domain: más de 253 caracteres → 23514');
 select pg_temp.logout();
@@ -416,6 +429,160 @@ select ok(
     where org_id = '0000000a-0000-0000-0000-000000000000'
       and actor = '00000000-0000-0000-0000-0000000000ff') >= 7,
   'el owner de la org ve las acciones del platform admin en su auditoría');
+select pg_temp.logout();
+
+-- -----------------------------------------------------------------------------
+-- H1 · Suspensión de enlaces por la plataforma
+-- -----------------------------------------------------------------------------
+select ok(
+  (select not c.convalidated from pg_constraint c
+    where c.conname = 'blocked_domains_two_labels_check'
+      and c.conrelid = 'private.blocked_domains'::regclass),
+  'H3: CHECK de dos etiquetas creado NOT VALID (expand)');
+select ok(
+  not has_column_privilege('authenticated', 'public.dynamic_links', 'suspended_at', 'update')
+  and not has_column_privilege('authenticated', 'public.dynamic_links', 'suspended_reason', 'update')
+  and not has_column_privilege('authenticated', 'public.dynamic_links', 'suspended_at', 'insert')
+  and not has_column_privilege('authenticated', 'public.dynamic_links', 'suspended_reason', 'insert'),
+  'authenticated sin INSERT/UPDATE en suspended_at/suspended_reason');
+select ok(has_column_privilege('authenticated', 'public.dynamic_links', 'suspended_at', 'select'),
+  'authenticated puede leer suspended_at');
+select ok(
+  not has_function_privilege('anon', 'public.resolve_link(text)', 'execute')
+  and not has_function_privilege('authenticated', 'public.resolve_link(text)', 'execute')
+  and has_function_privilege('service_role', 'public.resolve_link(text)', 'execute')
+  and (select p.prosecdef and p.proconfig = array['search_path=""']
+         from pg_proc p where p.oid = 'public.resolve_link(text)'::regprocedure),
+  'resolve_link recreada: SECURITY DEFINER, search_path vacío, solo service_role');
+
+-- La org no puede suspender por su cuenta (ni con UPDATE ni con INSERT).
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select throws_ok(
+  $$update public.dynamic_links set suspended_at = now()
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'owner: UPDATE de suspended_at → 42501');
+select throws_ok(
+  $$insert into public.dynamic_links (org_id, name, destination_url, suspended_at)
+    values ('0000000a-0000-0000-0000-000000000000', 'S', 'https://s.example.com/', now())$$,
+  '42501', null, 'owner: INSERT con suspended_at → 42501');
+select pg_temp.logout();
+
+-- Ni el platform admin por la tabla (debe usar la RPC).
+select pg_temp.login('00000000-0000-0000-0000-0000000000ff');
+select throws_ok(
+  $$update public.dynamic_links set suspended_reason = 'x'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'platform admin: UPDATE directo de suspended_reason → 42501 (usa la RPC)');
+
+select is(
+  (select row(l.suspended_at is not null, l.suspended_reason, l.status)::text
+     from public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', true, '  Phishing  ') l),
+  row(true, 'Phishing', 'active'::public.link_status)::text,
+  'admin_suspend_link: suspende con motivo (btrim) sin tocar status');
+select pg_temp.logout();
+
+create temp table t051_susp as
+  select suspended_at from public.dynamic_links where id = 'a1000000-0000-0000-0000-000000000002';
+grant select on t051_susp to authenticated, service_role;
+
+select is(
+  array(select row(a.action, a.actor, a.diff -> 'suspended_reason')::text
+          from pg_temp.audit_rows('link', 'a1000000-0000-0000-0000-000000000002') a
+         where a.action <> 'link.created'),
+  array[row('link.suspended', '00000000-0000-0000-0000-0000000000ff'::uuid,
+            '{"old": null, "new": "Phishing"}'::jsonb)::text],
+  'auditoría: solo link.suspended (sin link.updated duplicado), actor = platform admin');
+
+-- La org no puede tocar un enlace suspendido.
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select throws_ok(
+  $$update public.dynamic_links set status = 'paused'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'owner: cambiar status de un enlace suspendido → 42501');
+select throws_ok(
+  $$update public.dynamic_links set destination_url = 'https://otro.example.com/'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'owner: cambiar destino de un enlace suspendido → 42501');
+select throws_ok(
+  $$update public.dynamic_links set fallback_url = 'https://otro.example.com/'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'owner: cambiar fallback de un enlace suspendido → 42501');
+select throws_ok(
+  $$update public.dynamic_links set name = 'Otro'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'owner: renombrar un enlace suspendido → 42501');
+select is((select suspended_reason from public.dynamic_links where id = 'a1000000-0000-0000-0000-000000000002'),
+  'Phishing', 'owner: ve el motivo de la suspensión');
+select lives_ok(
+  $$update public.dynamic_links set name = 'Menú 2'
+     where id = 'a1000000-0000-0000-0000-000000000001'$$,
+  'owner: los enlaces no suspendidos se siguen editando');
+select pg_temp.logout();
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000ed');
+select throws_ok(
+  $$update public.dynamic_links set status = 'active'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  '42501', null, 'editor: tocar un enlace suspendido → 42501');
+select pg_temp.logout();
+
+-- El redirector lo ve suspendido.
+set local role service_role;
+select is(
+  (select r.suspended_at from public.resolve_link('XyZ9876') r),
+  (select suspended_at from t051_susp),
+  'resolve_link devuelve suspended_at del enlace suspendido');
+select is(
+  (select r.suspended_at from public.resolve_link('AbC1234') r), null::timestamptz,
+  'resolve_link: suspended_at NULL en un enlace no suspendido');
+select lives_ok(
+  $$update public.dynamic_links set name = 'Promo (svc)'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  'service_role puede modificar un enlace suspendido');
+reset role;
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000ff');
+select is(
+  (select row(l.suspended_at = (select suspended_at from t051_susp), l.suspended_reason)::text
+     from public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', true, 'Malware') l),
+  row(true, 'Malware')::text,
+  'admin_suspend_link: re-suspender conserva suspended_at y cambia el motivo');
+select lives_ok($$select public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', true, 'Malware')$$,
+  'admin_suspend_link: repetir sin cambios es idempotente');
+select throws_ok(
+  $$select public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', true, repeat('x', 501))$$,
+  '23514', null, 'admin_suspend_link: motivo > 500 → 23514');
+select throws_ok(
+  $$select public.admin_suspend_link('a1000000-0000-0000-0000-00000000dead', true)$$,
+  'P0002', null, 'admin_suspend_link: enlace inexistente → P0002');
+select throws_ok(
+  $$select public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', null)$$,
+  '22023', null, 'admin_suspend_link: p_suspended NULL → 22023');
+select is(
+  (select row(l.suspended_at, l.suspended_reason)::text
+     from public.admin_suspend_link('a1000000-0000-0000-0000-000000000002', false, 'ignorado') l),
+  row(null::timestamptz, null::text)::text,
+  'admin_suspend_link: reactivar limpia suspended_at y el motivo');
+select lives_ok($$select public.admin_suspend_link('a1000000-0000-0000-0000-000000000001', false)$$,
+  'admin_suspend_link: reactivar un enlace no suspendido no falla');
+select pg_temp.logout();
+
+select is(
+  array(select a.action
+          from pg_temp.audit_rows('link', 'a1000000-0000-0000-0000-000000000002') a
+         where a.action in ('link.suspended', 'link.unsuspended', 'link.updated')),
+  array['link.suspended', 'link.updated', 'link.suspended', 'link.unsuspended'],
+  'auditoría: suspended, edición de service_role, cambio de motivo y unsuspended; sin filas por no-ops');
+select is(
+  (select count(*) from pg_temp.audit_rows('link', 'a1000000-0000-0000-0000-000000000001') a
+    where a.action like 'link.%suspended'),
+  0::bigint, 'auditoría: reactivar un enlace no suspendido no deja fila');
+
+select pg_temp.login('00000000-0000-0000-0000-0000000000a1');
+select lives_ok(
+  $$update public.dynamic_links set status = 'paused'
+     where id = 'a1000000-0000-0000-0000-000000000002'$$,
+  'owner: tras reactivar, vuelve a poder editar el enlace');
 select pg_temp.logout();
 
 -- -----------------------------------------------------------------------------

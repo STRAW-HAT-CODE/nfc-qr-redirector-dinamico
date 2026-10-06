@@ -49,6 +49,27 @@
 --     humanos (is_bot = false) de scan_events en los últimos 30 días
 --     (índice scan_events_org_occurred_idx), no los rollups, para incluir hoy.
 --   * admin_set_link_status acepta cualquier link_status (active reactiva).
+--     No es una suspensión: la org puede revertir el estado (sec-T051 H1).
+--
+-- Revisión sec-T051 (decisión del orquestador):
+--   * H1 · Suspensión de enlace por la plataforma (docs/03: solo platform
+--     admin). Columnas dynamic_links.suspended_at / suspended_reason (ALTER
+--     TABLE ADD COLUMN nullable: sin reescritura; expand), sin grant de
+--     INSERT/UPDATE para authenticated (SELECT sí: la org ve que está
+--     suspendido). Trigger SECURITY INVOKER dynamic_links_suspension_guard:
+--     authenticated/anon que no sean platform admin no pueden cambiar
+--     suspended_*, ni hacer ningún UPDATE sobre un enlace suspendido (42501,
+--     hint 'link_suspended'). service_role/postgres pasan. El DELETE sigue
+--     permitido a admin+ (el slug nunca se reasigna, así que borrar no
+--     reactiva nada). RPC admin_suspend_link(link, suspended, reason),
+--     auditada como link.suspended / link.unsuspended (escrita por la RPC;
+--     suspended_* se excluyen de dynamic_links_audit para no duplicar con
+--     link.updated). resolve_link devuelve también suspended_at; el
+--     redirector lo trata como org suspendida (no disponible, sin fallback).
+--   * H2 · public.am_i_platform_admin() para /v1/me.
+--   * H3 · blocked_domains exige al menos dos etiquetas (rechaza 'com',
+--     'localhost'…). CHECK NOT VALID: se aplica a filas nuevas sin validar las
+--     existentes (expand); validar en una migración posterior (contract).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
@@ -385,8 +406,199 @@ comment on function public.admin_find_link(text) is
   'Consola Monky: busca un enlace por slug exacto en cualquier org. Solo platform admin. DQR-T051.';
 
 -- -----------------------------------------------------------------------------
+-- H2 · ¿Soy platform admin? (para /v1/me)
+-- -----------------------------------------------------------------------------
+create or replace function public.am_i_platform_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select private.is_platform_admin()
+$$;
+
+comment on function public.am_i_platform_admin() is
+  'true si auth.uid() es platform admin. Para /v1/me. DQR-T051 (sec H2).';
+
+-- -----------------------------------------------------------------------------
+-- H3 · Blocklist: al menos dos etiquetas
+-- -----------------------------------------------------------------------------
+alter table private.blocked_domains
+  add constraint blocked_domains_two_labels_check
+    check (position('.' in domain) > 0) not valid;
+
+-- -----------------------------------------------------------------------------
+-- H1 · Suspensión de enlaces por la plataforma
+-- -----------------------------------------------------------------------------
+alter table public.dynamic_links
+  add column suspended_at     timestamptz,
+  add column suspended_reason text;
+
+alter table public.dynamic_links
+  add constraint dynamic_links_suspended_reason_check
+    check (suspended_reason is null
+           or (suspended_at is not null
+               and char_length(suspended_reason) between 1 and 500));
+
+comment on column public.dynamic_links.suspended_at is
+  'Suspendido por la plataforma (no lo cambia la org). El redirector responde no disponible, sin fallback. DQR-T051.';
+comment on column public.dynamic_links.suspended_reason is
+  'Motivo de la suspensión (visible para la org). Solo con suspended_at. DQR-T051.';
+
+-- Sin grant de INSERT/UPDATE de estas columnas a authenticated: los grants por
+-- columna de links.sql no las incluyen. Se revoca explícitamente por claridad.
+revoke insert (suspended_at, suspended_reason), update (suspended_at, suspended_reason)
+  on public.dynamic_links from authenticated, anon;
+
+-- SECURITY INVOKER a propósito: current_user es el rol real de la petición
+-- (igual que organizations_guard). Las RPC SECURITY DEFINER corren como
+-- postgres y pasan: deben comprobar platform admin antes de escribir.
+create or replace function private.dynamic_links_suspension_guard()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') or private.is_platform_admin() then
+    return new;
+  end if;
+
+  if tg_op = 'INSERT' then
+    if new.suspended_at is not null or new.suspended_reason is not null then
+      raise exception 'Solo un platform admin puede suspender un enlace'
+        using errcode = '42501', hint = 'link_suspended';
+    end if;
+    return new;
+  end if;
+
+  if old.suspended_at is not null then
+    raise exception 'El enlace está suspendido por la plataforma y no se puede modificar'
+      using errcode = '42501', hint = 'link_suspended';
+  end if;
+
+  if new.suspended_at is distinct from old.suspended_at
+     or new.suspended_reason is distinct from old.suspended_reason
+  then
+    raise exception 'Solo un platform admin puede suspender un enlace'
+      using errcode = '42501', hint = 'link_suspended';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function private.dynamic_links_suspension_guard() from public, anon;
+
+create trigger dynamic_links_suspension_guard
+  before insert or update on public.dynamic_links
+  for each row execute function private.dynamic_links_suspension_guard();
+
+-- La suspensión la audita admin_suspend_link (link.suspended/unsuspended);
+-- se excluyen aquí para no generar además un link.updated.
+drop trigger dynamic_links_audit on public.dynamic_links;
+create trigger dynamic_links_audit
+  after insert or update or delete on public.dynamic_links
+  for each row execute function private.audit_row(
+    'link', 'id', 'org_id', '*', 'suspended_at,suspended_reason',
+    'destination_url:destination_changed,status:status_changed');
+
+create or replace function public.admin_suspend_link(
+  p_link_id   uuid,
+  p_suspended boolean,
+  p_reason    text default null
+)
+returns public.dynamic_links
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_old    public.dynamic_links;
+  v_link   public.dynamic_links;
+  v_reason text := nullif(btrim(p_reason), '');
+begin
+  perform private.assert_platform_admin();
+
+  if p_suspended is null then
+    raise exception 'p_suspended requerido'
+      using errcode = '22023', hint = 'invalid_suspended';
+  end if;
+
+  select * into v_old from public.dynamic_links l where l.id = p_link_id for update;
+  if not found then
+    raise exception 'Enlace no encontrado'
+      using errcode = 'P0002', hint = 'not_found';
+  end if;
+
+  -- Motivo > 500 caracteres → 23514 (dynamic_links_suspended_reason_check).
+  update public.dynamic_links l
+     set suspended_at     = case when p_suspended then coalesce(l.suspended_at, now()) end,
+         suspended_reason = case when p_suspended then v_reason end
+   where l.id = p_link_id
+  returning * into v_link;
+
+  if v_link.suspended_at is distinct from v_old.suspended_at
+     or v_link.suspended_reason is distinct from v_old.suspended_reason
+  then
+    insert into public.audit_log (org_id, action, entity, entity_id, diff)
+    values (v_link.org_id,
+            case when p_suspended then 'link.suspended' else 'link.unsuspended' end,
+            'link', v_link.id::text,
+            jsonb_build_object(
+              'suspended_at', jsonb_build_object('old', v_old.suspended_at, 'new', v_link.suspended_at),
+              'suspended_reason', jsonb_build_object('old', v_old.suspended_reason, 'new', v_link.suspended_reason)));
+  end if;
+
+  return v_link;
+end;
+$$;
+
+comment on function public.admin_suspend_link(uuid, boolean, text) is
+  'Consola Monky: suspende/reactiva un enlace (la org no puede revertirlo). Auditado. DQR-T051 (sec H1).';
+
+-- resolve_link cambia su tipo de retorno (+ suspended_at): drop + create.
+drop function public.resolve_link(text);
+
+create function public.resolve_link(p_slug text)
+returns table (
+  id               uuid,
+  org_id           uuid,
+  destination_url  text,
+  fallback_url     text,
+  status           public.link_status,
+  starts_at        timestamptz,
+  expires_at       timestamptz,
+  org_status       public.org_status,
+  suspended_at     timestamptz
+)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select l.id, l.org_id, l.destination_url, l.fallback_url, l.status,
+         l.starts_at, l.expires_at, o.status, l.suspended_at
+  from public.dynamic_links l
+  join public.organizations o on o.id = l.org_id
+  where l.slug = p_slug;
+$$;
+
+comment on function public.resolve_link(text) is
+  'Redirector (service_role). suspended_at not null = suspendido por la plataforma: no disponible, sin fallback.';
+
+revoke execute on function public.resolve_link(text) from public, anon, authenticated;
+grant execute on function public.resolve_link(text) to service_role;
+
+-- -----------------------------------------------------------------------------
 -- Privilegios: EXECUTE solo authenticated
 -- -----------------------------------------------------------------------------
+revoke execute on function public.am_i_platform_admin() from public, anon, service_role;
+revoke execute on function public.admin_suspend_link(uuid, boolean, text) from public, anon, service_role;
+grant execute on function public.am_i_platform_admin() to authenticated;
+grant execute on function public.admin_suspend_link(uuid, boolean, text) to authenticated;
 revoke execute on function public.my_effective_role(uuid) from public, anon, service_role;
 revoke execute on function public.admin_list_orgs(text, int, int) from public, anon, service_role;
 revoke execute on function public.admin_update_org(uuid, text, public.org_status, jsonb) from public, anon, service_role;
