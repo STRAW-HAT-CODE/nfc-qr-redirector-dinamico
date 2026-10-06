@@ -272,37 +272,44 @@ grant execute on function
 -- -----------------------------------------------------------------------------
 -- scan_events.tag_id → nfc_tags (H1 de DQR-T022)
 -- -----------------------------------------------------------------------------
--- 0) Bloqueo: desde aquí hasta el commit nadie escribe en scan_events (los
---    INSERT de record_scan esperan y luego se validan contra la FK nueva con
---    la función nueva, que ya no guarda tags ajenos). SHARE ROW EXCLUSIVE es
---    el mismo modo que toma ADD FOREIGN KEY; las lecturas siguen permitidas.
-lock table public.scan_events in share row exclusive mode;
+-- Todo en un único bloque DO: el CLI de Supabase no envuelve la migración en
+-- una transacción (LOCK TABLE suelto falla con 25P01), y así el bloqueo dura
+-- desde la limpieza hasta el índice, sea cual sea el modo de aplicación.
+do $$
+begin
+  -- 0) Bloqueo: hasta el commit nadie escribe en scan_events (los INSERT de
+  --    record_scan esperan y luego se validan contra la FK nueva con la
+  --    función nueva, que ya no guarda tags ajenos). SHARE ROW EXCLUSIVE es el
+  --    mismo modo que toma ADD FOREIGN KEY; las lecturas siguen permitidas.
+  lock table public.scan_events in share row exclusive mode;
 
--- 1) Limpieza: tag_id que no es una etiqueta del mismo enlace → NULL.
-update public.scan_events e
-set tag_id = null
-where e.tag_id is not null
-  and not exists (
-    select 1 from public.nfc_tags t
-    where t.id = e.tag_id and t.link_id = e.link_id
-  );
+  -- 1) Limpieza: tag_id que no es una etiqueta del mismo enlace → NULL.
+  update public.scan_events e
+  set tag_id = null
+  where e.tag_id is not null
+    and not exists (
+      select 1 from public.nfc_tags t
+      where t.id = e.tag_id and t.link_id = e.link_id
+    );
 
--- 2) FK compuesta: el evento solo apunta a etiquetas de su enlace. Borrar la
---    etiqueta deja tag_id en NULL (el escaneo se conserva).
-alter table public.scan_events
-  add constraint scan_events_tag_link_fkey
-    foreign key (tag_id, link_id)
-    references public.nfc_tags (id, link_id)
-    on delete set null (tag_id)
-    not valid;
+  -- 2) FK compuesta: el evento solo apunta a etiquetas de su enlace. Borrar la
+  --    etiqueta deja tag_id en NULL (el escaneo se conserva).
+  alter table public.scan_events
+    add constraint scan_events_tag_link_fkey
+      foreign key (tag_id, link_id)
+      references public.nfc_tags (id, link_id)
+      on delete set null (tag_id)
+      not valid;
 
-alter table public.scan_events validate constraint scan_events_tag_link_fkey;
+  alter table public.scan_events validate constraint scan_events_tag_link_fkey;
 
--- Cubre la FK (set null al borrar una etiqueta) y las estadísticas por etiqueta.
--- Parcial: la mayoría de eventos no llevan etiqueta.
-create index scan_events_tag_occurred_idx
-  on public.scan_events (tag_id, occurred_at desc)
-  where tag_id is not null;
+  -- 3) Cubre la FK (set null al borrar una etiqueta) y las estadísticas por
+  --    etiqueta. Parcial: la mayoría de eventos no llevan etiqueta.
+  create index scan_events_tag_occurred_idx
+    on public.scan_events (tag_id, occurred_at desc)
+    where tag_id is not null;
+end
+$$;
 
 comment on column public.scan_events.tag_id is
   'Etiqueta NFC (ADR-0004, ?t=). FK (tag_id, link_id) → nfc_tags (id, link_id) on delete set null. Solo con channel = nfc.';
