@@ -206,7 +206,7 @@ select results_eq(
   $$ select channel::text, tag_id, country::text, device, os, char_length(browser),
             char_length(referer), ip_hash, is_bot
      from public.scan_events order by id desc limit 1 $$,
-  $$ values ('nfc', '7a000000-0000-0000-0000-000000000001'::uuid, 'MX', 'mobile', 'iOS 17', 64,
+  $$ values ('nfc', null::uuid, 'MX', 'mobile', 'iOS 17', 64,
              512, repeat('ab', 32), false) $$,
   'record_scan sanea: país en mayúsculas, sin controles, recorta browser/referer, ip_hash en minúsculas');
 select ok(
