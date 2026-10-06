@@ -11,12 +11,14 @@
 ## Entornos
 `local` (Supabase CLI) → `staging` → `production`. Migraciones solo desde `supabase/migrations/`; nunca cambios manuales en producción.
 
-| | local | staging | production |
+**Decisión MVP (2026-10-06):** Desarrollo en local con Supabase CLI; `staging` = proyecto `huufgmpzusmzmujldxol` (nfc-redirect-api); `production` = **mismo proyecto** (`nfc-redirect-api`, como producción real del MVP); _staging como entorno separado_ es un futuro (limitado a 2 proyectos free en Supabase).
+
+| | local | staging (MVP) | production (futuro) |
 |---|---|---|---|
-| Dónde vive | Docker vía Supabase CLI (`http://127.0.0.1:54321`) | Proyecto Supabase `huufgmpzusmzmujldxol` (`nfc-redirect-api`, us-east-2, org Alexdev, `https://huufgmpzusmzmujldxol.supabase.co`) + Vercel (preview) | Proyecto Supabase propio + Vercel (`main`) |
-| Cómo se crea | `supabase start` | Proyecto existente, designado como staging por el usuario (2026-10-05); enlazar con `supabase link --project-ref huufgmpzusmzmujldxol` | Solo con OK del usuario |
-| Quién migra | db-architect, desde `supabase/migrations/` (`supabase db reset`) | db-architect, desde `supabase/migrations/` (`supabase db push`) | db-architect, desde `supabase/migrations/`, **solo con OK del usuario** y aprobación de security-reviewer |
-| Secretos | `.env` local (git-ignorado) | Env vars de Vercel | Env vars de Vercel |
+| Dónde vive | Docker vía Supabase CLI (`http://127.0.0.1:54321`) | Proyecto Supabase `huufgmpzusmzmujldxol` (`nfc-redirect-api`, us-east-2, org Alexdev, `https://huufgmpzusmzmujldxol.supabase.co`) + Vercel Preview | Proyecto Supabase nuevo + Vercel Production · _O_ ampliar Supabase plan a 2+ proyectos |
+| Cómo se crea | `supabase start` en worktree | `supabase link --project-ref huufgmpzusmzmujldxol` en worktree T055b | A decidir: nuevo proyecto o upgrade de plan Supabase |
+| Quién migra | db-architect, desde `supabase/migrations/` (`supabase db reset`) | db-architect, desde `supabase/migrations/` (`supabase db push --linked`), sin `--skip-seed` | db-architect, con OK del usuario y aprobación de security-reviewer |
+| Secretos | `.env` local (git-ignorado) | Env vars de Vercel (Preview) | Env vars de Vercel (Production) |
 
 ### Rellenar `.env` por entorno
 1. `cp .env.example .env`.
