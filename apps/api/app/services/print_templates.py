@@ -7,6 +7,7 @@ Medidas (mm):
 - sticker: 50×50 de corte + 3 de sangrado por lado → lienzo 56×56 (zona segura 3 mm).
 - display: A6 105×148 (zona segura 8 mm).
 - poster: A4 210×297 (zona segura 15 mm).
+- google_review: A6 105×148 (zona segura 8 mm): texto, 5 estrellas, QR con la G y nombre del local.
 
 Compatibilidad con Canva: texto como `<text>` (una línea por elemento, `y` = línea base, sin
 `dominant-baseline`), sin filtros ni máscaras, `viewBox` en mm y fuentes de sistema
@@ -16,9 +17,10 @@ Compatibilidad con Canva: texto como `<text>` (una línea por elemento, `y` = l�
 from __future__ import annotations
 
 import io
+import math
 import unicodedata
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Literal
 from xml.sax.saxutils import escape
 
@@ -38,8 +40,10 @@ from app.services.qr_render import (
     svg_body,
 )
 
-Template = Literal["sticker", "display", "poster"]
-TEMPLATES: tuple[str, ...] = ("sticker", "display", "poster")
+Template = Literal["sticker", "display", "poster", "google_review"]
+TEMPLATES: tuple[str, ...] = ("sticker", "display", "poster", "google_review")
+GOOGLE_REVIEW_TEXT = "¿Te gustó? Déjanos tu reseña en Google"
+STAR_COLOR = "#FBBC04"
 MAX_TITLE_LEN = 80
 DPI = 300
 FONT_FAMILY = "Helvetica, Arial, sans-serif"
@@ -88,6 +92,8 @@ SPECS: dict[str, Spec] = {
     "sticker": Spec("sticker", 56, 56, 3, 3, 3.0, 2.2, 1, 9.2, 30, 10.5, 42.5, 6, 3.4),
     "display": Spec("display", 105, 148, 0, 8, 7.0, 4.5, 2, 22, 75, 38, 122, 12, 6.0),
     "poster": Spec("poster", 210, 297, 0, 15, 16.0, 9.0, 3, 42, 150, 95, 255, 20, 10.0),
+    # pill_*/cta_* sin uso: la tarjeta de reseñas no lleva botón. title_* = titular.
+    "google_review": Spec("google_review", 105, 148, 0, 8, 6.5, 4.5, 2, 22, 62, 54, 0, 0, 0),
 }
 
 
@@ -197,7 +203,14 @@ class QrBlock:
         return self.lay.height * self.s
 
 
-Element = Rect | Text | QrBlock
+@dataclass(frozen=True)
+class Poly:
+    id: str
+    points: tuple[tuple[float, float], ...]
+    fill: str
+
+
+Element = Rect | Text | QrBlock | Poly
 
 
 @dataclass(frozen=True)
@@ -219,11 +232,60 @@ def _ink(design: QrDesign) -> str:
     )
 
 
+def star_points(cx: float, cy: float, r: float) -> tuple[tuple[float, float], ...]:
+    """Estrella de 5 puntas (radio exterior `r`, interior 0.382 r), punta hacia arriba."""
+    pts = []
+    for i in range(10):
+        rad = r if i % 2 == 0 else r * 0.382
+        a = -math.pi / 2 + i * math.pi / 5
+        pts.append((cx + rad * math.cos(a), cy + rad * math.sin(a)))
+    return tuple(pts)
+
+
+def _build_google_review(payload: str, design: QrDesign, headline: str, venue: str | None) -> Scene:
+    sp = SPECS["google_review"]
+    headline = clean_title(headline)
+    venue = clean_title(venue) if venue else None
+    ink = _ink(design)
+    sx0, _, sx1, _ = sp.safe_rect
+    cx = sp.w / 2
+    els: list[Element] = [Rect(0, 0, sp.w, sp.h, design.bg, id="fondo")]
+
+    lines, size = fit_title(headline, sp, sx1 - sx0)
+    for i, line in enumerate(lines, 1):
+        els.append(Text(f"titulo-{i}", cx, sp.title_y + (i - 1) * size * 1.2, size, line, ink))
+
+    r, gap, star_y = 5.0, 2.0, 43.0
+    x0 = cx - (5 * 2 * r + 4 * gap) / 2 + r
+    for i in range(5):
+        els.append(
+            Poly(f"estrella-{i + 1}", star_points(x0 + i * (2 * r + gap), star_y, r), STAR_COLOR)
+        )
+
+    lay = _layout(payload, design)
+    s = min(sp.qr_box / lay.width, sp.qr_box / lay.height)
+    els.append(QrBlock(cx - lay.width * s / 2, sp.qr_y, s, lay, design, payload))
+
+    if venue:
+        vspec = replace(sp, title_size=6.0, title_min=3.5, title_lines=2)
+        vlines, vsize = fit_title(venue, vspec, sx1 - sx0)
+        for i, line in enumerate(vlines, 1):
+            els.append(Text(f"local-{i}", cx, 128 + (i - 1) * vsize * 1.2, vsize, line, ink))
+    return Scene(sp, headline, "", els)
+
+
 def build_scene(
-    template: str, payload: str, design: QrDesign, title: str, nfc: bool = False
+    template: str,
+    payload: str,
+    design: QrDesign,
+    title: str,
+    nfc: bool = False,
+    venue: str | None = None,
 ) -> Scene:
     if template not in SPECS:
         raise QrRenderError("template inválido")
+    if template == "google_review":
+        return _build_google_review(payload, design, title, venue)
     sp = SPECS[template]
     title = clean_title(title)
     cta = CTA_NFC if nfc else CTA_QR
@@ -267,6 +329,9 @@ def render_svg_template(scene: Scene) -> str:
                 f'<rect{idattr} x="{_f(el.x)}" y="{_f(el.y)}" width="{_f(el.w)}" '
                 f'height="{_f(el.h)}"{rx} fill="{el.fill}"/>'
             )
+        elif isinstance(el, Poly):
+            pts = " ".join(f"{_f(x)},{_f(y)}" for x, y in el.points)
+            out.append(f'<polygon id="{el.id}" points="{pts}" fill="{el.fill}"/>')
         elif isinstance(el, Text):
             out.append(
                 f'<text id="{el.id}" x="{_f(el.x)}" y="{_f(el.y)}" fill="{el.fill}" '
@@ -379,6 +444,11 @@ def render_pdf_template(scene: Scene) -> bytes:
     for el in scene.elements:
         if isinstance(el, Rect):
             body.append(f"{_rgb(el.fill)} rg {_rrect(el.x, el.y, el.w, el.h, el.rx)}f ".encode())
+        elif isinstance(el, Poly):
+            path = " ".join(
+                f"{_n(x)} {_n(y)} {'m' if i == 0 else 'l'}" for i, (x, y) in enumerate(el.points)
+            )
+            body.append(f"{_rgb(el.fill)} rg {path} h f ".encode())
         elif isinstance(el, Text):
             x = el.x - text_width(el.s, el.size) / 2
             body.append(
@@ -459,6 +529,8 @@ def render_png_template(scene: Scene) -> bytes:
                 d.rounded_rectangle(box, radius=el.rx * ppm, fill=el.fill)
             else:
                 d.rectangle(box, fill=el.fill)
+        elif isinstance(el, Poly):
+            d.polygon([(x * ppm, y * ppm) for x, y in el.points], fill=el.fill)
         elif isinstance(el, Text):
             font = ImageFont.load_default(size=max(8, round(el.size * ppm * 1.05)))
             d.text((el.x * ppm, el.y * ppm), el.s, fill=el.fill, font=font, anchor="ms")
@@ -481,8 +553,9 @@ def render_template(
     design: QrDesign,
     title: str,
     nfc: bool = False,
+    venue: str | None = None,
 ) -> bytes:
-    scene = build_scene(template, payload, design, title, nfc)
+    scene = build_scene(template, payload, design, title, nfc, venue)
     if fmt == "svg":
         return render_svg_template(scene).encode("utf-8")
     if fmt == "pdf":

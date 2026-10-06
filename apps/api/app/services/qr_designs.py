@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import io
 import re
+from dataclasses import replace
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -20,14 +21,16 @@ from app.db import PostgrestError, UserDB
 from app.errors import ApiError
 from app.schemas.qr import DesignIn, DesignOut
 from app.services.limits import plan_limit_error
-from app.services.print_templates import render_template
+from app.services.print_templates import GOOGLE_REVIEW_TEXT, render_template
 from app.services.qr_render import (
+    LOGO_PRESETS,
     MAX_LOGO_BYTES,
     QrDesign,
     QrRenderError,
     _load_logo,
     _norm_hex,
     check_design,
+    preset_logo,
     qr_payload,
     render_pdf,
     render_png,
@@ -55,6 +58,13 @@ def _map_db_error(exc: PostgrestError) -> ApiError:
     if exc.code in ("23514", "23503"):
         return ApiError(422, "design_invalid", "Diseño no válido")
     return ApiError(502, "upstream_error", "Error al consultar la base de datos")
+
+
+def _row_preset(row: dict[str, Any] | None) -> str | None:
+    """`style.logo_preset` si está en la lista blanca; cualquier otro valor se ignora."""
+    style = row.get("style") if row else None
+    value = style.get("logo_preset") if isinstance(style, dict) else None
+    return value if isinstance(value, str) and value in LOGO_PRESETS else None
 
 
 def _default_title(link: dict[str, Any], slug: str) -> str:
@@ -211,23 +221,28 @@ class QrDesignService:
                 except (QrRenderError, TypeError):
                     continue
                 extra[key] = style[key]
+        preset = _row_preset(row)
+        if preset:  # el preset gana sobre logo_path; el logo sale del asset incluido
+            logo = preset_logo(preset)
         return QrDesign(**base, **extra, logo=logo)
 
     def _out(self, link_id: UUID, row: dict[str, Any] | None) -> DesignOut:
         d = self._to_design(row)
         has_logo = bool(row and row.get("logo_path"))
-        # check_design necesita saber si hay logo para avisar; se evalúa sobre el diseño sin bytes
+        preset = _row_preset(row)
         warnings = check_design(d)
         return DesignOut(
             link_id=str(link_id),
             fg=d.fg,
             bg=d.bg,
-            ecc_level="H" if has_logo else d.ecc,
+            ecc_level="H" if has_logo or preset else d.ecc,
             frame=d.frame,
             module_style=d.module_style,
             margin=d.margin,
             frame_text=d.frame_text,
             has_logo=has_logo,
+            logo_preset=preset,
+            style=(row.get("style") if row and isinstance(row.get("style"), dict) else {}),
             is_default=row is None,
             updated_at=row.get("updated_at") if row else None,
             warnings=warnings,
@@ -256,13 +271,16 @@ class QrDesignService:
         style: dict[str, Any] = {"module_style": body.module_style, "margin": body.margin}
         if body.frame_text:
             style["frame_text"] = body.frame_text
+        if body.logo_preset:
+            style["logo_preset"] = body.logo_preset
         row = {
             "link_id": str(link_id),
             "org_id": str(self._org_id),
             "fg": _norm_hex(body.fg, "fg"),
             "bg": _norm_hex(body.bg, "bg"),
             "frame": body.frame,
-            "ecc_level": "H" if has_logo else body.ecc_level,  # con logo, H (CHECK en BD)
+            # con logo o preset, H (CHECK en BD)
+            "ecc_level": "H" if has_logo or body.logo_preset else body.ecc_level,
             "style": style,
         }
         rows = await self._run(self._db.upsert(DESIGNS, row, "link_id"))
@@ -321,10 +339,13 @@ class QrDesignService:
         nfc = await self._has_nfc(link_id) if template != "none" else False
         row = await self._row(link_id)
         logo = None
-        if row and row.get("logo_path"):
+        preset = "google" if template == "google_review" else _row_preset(row)
+        if preset is None and row and row.get("logo_path"):  # el preset evita tocar Storage
             logo = await self._fetch_logo(str(row["logo_path"]))
         try:
             design = self._to_design(row, logo)
+            if template == "google_review":  # la plantilla siempre lleva la G, con ECC H
+                design = replace(design, logo=preset_logo("google"))
             payload = qr_payload(self._settings.public_redirect_base_url, slug, "q")
         except QrRenderError:
             raise ApiError(
@@ -339,8 +360,11 @@ class QrDesignService:
                     fmt,  # type: ignore[arg-type]
                     payload,
                     design,
-                    title or _default_title(link, slug),
+                    (title or _default_title(link, slug))
+                    if template != "google_review"
+                    else (title or GOOGLE_REVIEW_TEXT),
                     nfc,
+                    _default_title(link, slug) if template == "google_review" else None,
                 )
             if fmt == "png":
                 return render_png(payload, design, size)

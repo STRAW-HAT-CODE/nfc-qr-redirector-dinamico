@@ -1,7 +1,7 @@
 """Modelos de /v1/links/{id}/design y descargas QR."""
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
@@ -21,6 +21,8 @@ class DesignIn(BaseModel):
     module_style: Literal["square", "rounded", "dots"] = "square"
     margin: Annotated[int, Field(ge=0, le=16)] = 4
     frame_text: FrameText | None = None
+    # Preset de logo incluido (lista blanca: solo "google"); fuerza ECC H y gana sobre logo_path.
+    logo_preset: Literal["google"] | None = None
 
 
 class DesignOut(BaseModel):
@@ -33,6 +35,8 @@ class DesignOut(BaseModel):
     margin: int
     frame_text: str | None
     has_logo: bool
+    logo_preset: str | None = None
+    style: dict[str, Any] = Field(default_factory=dict)
     is_default: bool
     updated_at: datetime | None
     warnings: list[str]
