@@ -477,6 +477,31 @@ def test_preset_put_get_forces_ecc_h_and_no_storage(make: Any) -> None:
     assert j["logo_preset"] is None and j["ecc_level"] == "M"
 
 
+def test_preset_via_style_contract_of_web(make: Any) -> None:
+    """La web envía {"style": {"logo_preset": ...}} (contrato DQR-T060)."""
+    b = make("editor")
+    c = TestClient(app)
+    j = c.put(d(), headers=H, json={"fg": "#000000", "style": {"logo_preset": "google"}}).json()
+    assert j["logo_preset"] == "google" and j["ecc_level"] == "H"
+    assert b.design and b.design["logo_path"] is None
+    j = c.put(d(), headers=H, json={"style": {"logo_preset": None}}).json()
+    assert j["logo_preset"] is None
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"style": {"logo_preset": "facebook"}},
+        {"style": {"logo_preset": "google", "otra": 1}},
+        {"style": {"module_style": "dots"}},
+        {"logo_preset": "google", "style": {"logo_preset": None}},
+    ],
+)
+def test_preset_via_style_invalid_422(make: Any, body: Any) -> None:
+    make("editor")
+    assert TestClient(app).put(d(), headers=H, json=body).status_code == 422
+
+
 @pytest.mark.parametrize("value", ["facebook", "../../etc/passwd", "", 1, True])
 def test_preset_invalid_422(make: Any, value: Any) -> None:
     make("editor")
