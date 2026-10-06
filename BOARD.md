@@ -34,15 +34,15 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T011 | CI | devops | DONE (qa PASS) | T010 |
 | DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
 | DQR-T013 | Migración tenancy + helpers RLS | db-architect | DONE (qa PASS · seguridad APPROVED) | T010, T012 |
-| DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
+| DQR-T014 | Tests RLS tenancy | qa | DONE (tenancy_test.sql, 66 tests) | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
-| DQR-T016 | Auth FastAPI (JWT) | backend-api | TESTING (PR #6 fusionado) | T010, T013 |
-| DQR-T017 | API orgs y miembros | backend-api | IN_PROGRESS | T016 |
-| DQR-T018 | Migración dynamic_links + historial | db-architect | TESTING (PR #7 fusionado) | T013 |
+| DQR-T016 | Auth FastAPI (JWT) | backend-api | DONE (qa PASS) | T010, T013 |
+| DQR-T017 | API orgs y miembros | backend-api | TESTING (PR #8 fusionado) | T016 |
+| DQR-T018 | Migración dynamic_links + historial | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | DONE (qa PASS) | T010 |
-| DQR-T020 | API CRUD enlaces | backend-api | IN_PROGRESS | T016, T018, T019 |
-| DQR-T021 | Redirector /r/{slug} | backend-api | IN_PROGRESS | T018 |
-| DQR-T022 | Migración scan_events | db-architect | IN_PROGRESS | T018 |
+| DQR-T020 | API CRUD enlaces | backend-api | IN_REVIEW (PR #10 · rebasando) | T016, T018, T019 |
+| DQR-T021 | Redirector /r/{slug} | backend-api | IN_REVIEW (PR #9 · seguridad revisando) | T018 |
+| DQR-T022 | Migración scan_events | db-architect | IN_REVIEW (PR #11 · seguridad revisando) | T018 |
 | DQR-T023 | Registro asíncrono del escaneo | backend-api | BACKLOG | T021, T022 |
 | DQR-T024 | Tests S1 | qa | BACKLOG | T020, T023 |
 
@@ -92,3 +92,4 @@ AGENT-10 scribe            Docs y tablero                          activo
 | T016 · orquestador | Platform admin recibe 403 en endpoints de org: hace falta la RPC public.effective_role(org_id) | db-architect (T017/T054) |
 | T018 · sec H8 | La blocklist no es retroactiva: falta un job o vista para enlaces existentes que caen en un dominio bloqueado | security-reviewer / DQR-08 |
 | T018 · ADR-0006 | T020: la API no envía el slug (lo genera la BD); slug.py solo valida el formato | backend-api |
+| T017 · orquestador | Añadir miembro por email (hoy 501): RPC para resolver email a user_id sin enumeración | db-architect + backend-api |
