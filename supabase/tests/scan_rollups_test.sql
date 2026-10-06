@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(74);
+select plan(86);
 
 -- La zona horaria de la sesión no debe influir: el día es siempre UTC.
 set local timezone = 'America/Mexico_City';
@@ -383,6 +383,72 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000cc');
 select is(
   (select count(*)::int from public.org_stats('0000000a-0000-0000-0000-000000000000', pg_temp.d(3), pg_temp.d(0))),
   0, 'usuario sin org → vacío');
+select pg_temp.logout();
+
+-- sec-T041 H1: un extraño no hace leer scan_events ni scan_daily_rollups.
+create temp table io_before as
+  select relname, coalesce(seq_scan, 0) + coalesce(idx_scan, 0) as n
+  from pg_stat_xact_user_tables
+  where schemaname = 'public' and relname in ('scan_events', 'scan_daily_rollups');
+select pg_temp.login('00000000-0000-0000-0000-0000000000cc');
+select count(*) from public.org_stats('0000000a-0000-0000-0000-000000000000', pg_temp.d(365), pg_temp.d(0));
+select count(*) from public.link_stats('a0000000-0000-0000-0000-000000000001', pg_temp.d(365), pg_temp.d(0));
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
+select count(*) from public.org_stats('0000000a-0000-0000-0000-000000000000', pg_temp.d(365), pg_temp.d(0));
+select count(*) from public.link_stats('a0000000-0000-0000-0000-000000000001', pg_temp.d(365), pg_temp.d(0));
+select pg_temp.logout();
+select is(
+  (select count(*)::int
+   from pg_stat_xact_user_tables s
+   join io_before b using (relname)
+   where s.schemaname = 'public'
+     and coalesce(s.seq_scan, 0) + coalesce(s.idx_scan, 0) <> b.n),
+  0, 'H1: org_stats/link_stats de un extraño no tocan scan_events ni scan_daily_rollups');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select count(*) from public.link_stats('a0000000-0000-0000-0000-000000000001', pg_temp.d(3), pg_temp.d(0));
+select pg_temp.logout();
+select ok(
+  (select sum(coalesce(s.seq_scan, 0) + coalesce(s.idx_scan, 0)) from pg_stat_xact_user_tables s
+   where s.schemaname = 'public' and s.relname in ('scan_events', 'scan_daily_rollups'))
+  > (select sum(n) from io_before),
+  'H1: el contador sí sube cuando llama un miembro (la sonda funciona)');
+
+-- sec-T041 H2: políticas por conjunto con private.my_org_ids().
+select ok(
+  (select prosecdef from pg_proc where oid = 'private.my_org_ids()'::regprocedure)
+  and (select proconfig @> array['search_path=""'] from pg_proc where oid = 'private.my_org_ids()'::regprocedure),
+  'H2: my_org_ids es SECURITY DEFINER con search_path vacío');
+select ok(not has_function_privilege('anon', 'private.my_org_ids()', 'execute'),
+  'H2: anon no ejecuta my_org_ids');
+select ok(has_function_privilege('authenticated', 'private.my_org_ids()', 'execute'),
+  'H2: authenticated ejecuta my_org_ids');
+select ok(
+  (select qual like '%my_org_ids()%' and qual not like '%is_org_member%'
+   from pg_policies where schemaname = 'public' and policyname = 'scan_daily_rollups_select'),
+  'H2: scan_daily_rollups_select usa my_org_ids()');
+select ok(
+  (select qual like '%my_org_ids()%' and qual not like '%is_org_member%'
+   from pg_policies where schemaname = 'public' and policyname = 'scan_events_select'),
+  'H2: scan_events_select usa my_org_ids()');
+select pg_temp.login('00000000-0000-0000-0000-0000000000a2');
+select results_eq(
+  $$ select private.my_org_ids()::text $$,
+  $$ values ('0000000a-0000-0000-0000-000000000000') $$,
+  'H2: my_org_ids devuelve solo las orgs del usuario');
+select is((select count(*)::int from public.scan_events
+           where org_id <> '0000000a-0000-0000-0000-000000000000'), 0,
+  'H2: con la nueva política, el viewer de A no ve eventos de B');
+select is((select count(*)::int from public.scan_events), 14,
+  'H2: el viewer de A ve todos los eventos de A (bots incluidos)');
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000cc');
+select is((select count(*)::int from public.scan_events), 0,
+  'H2: usuario sin org no ve eventos');
+select pg_temp.logout();
+select pg_temp.login('00000000-0000-0000-0000-0000000000ff');
+select is((select count(*)::int from public.scan_events), 16,
+  'H2: platform admin ve todos los eventos');
 select pg_temp.logout();
 
 select pg_temp.login('00000000-0000-0000-0000-0000000000ff');

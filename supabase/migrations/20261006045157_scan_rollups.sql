@@ -4,7 +4,9 @@
 -- docs/06-seguridad.md (métricas: bots excluidos) · sec-T022 H7 (las
 -- estadísticas de rango van por rollups, filtrando por link_id/org_id).
 --
--- Fase: EXPAND (solo añade objetos; depende de 20261006022927_scan_events.sql).
+-- Fase: EXPAND (añade objetos; depende de 20261006022927_scan_events.sql).
+--   Único cambio sobre algo existente: la política scan_events_select pasa a
+--   evaluarse por conjunto (alter policy), con la misma semántica.
 --
 -- Decisiones:
 --   * Día = fecha UTC de occurred_at. Una fila por (enlace, día) con al menos
@@ -37,6 +39,10 @@
 --     org_stats.unique_visitors es la SUMA de los únicos por enlace (un mismo
 --     visitante en dos enlaces cuenta dos veces), también en el tramo en vivo,
 --     para que todos los días tengan la misma semántica.
+--   * Guardas (sec-T041 H1): link_stats/org_stats salen sin leer nada si el
+--     usuario no ve el enlace / no es miembro ni platform admin.
+--   * RLS por conjunto (sec-T041 H2): private.my_org_ids(); se cambia también
+--     la política scan_events_select de T022 (alter policy, misma semántica).
 --   * Índices: PK (link_id, day) sirve link_stats y la FK; (org_id, day) sirve
 --     org_stats y la RLS; (day) sirve el barrido por rango del refresh. El
 --     tramo en vivo usa los índices de scan_events (link_id|org_id,
@@ -268,6 +274,13 @@ begin
       using errcode = '22023', hint = 'invalid_range';
   end if;
 
+  -- sec-T041 H1: salida temprana si el enlace no es visible (dynamic_links
+  -- tiene RLS: solo lo ven los miembros y el platform admin). Evita que un
+  -- extraño obligue a recorrer los datos de otra org.
+  if not exists (select 1 from public.dynamic_links l where l.id = p_link_id) then
+    return;
+  end if;
+
   v_closed := private.scan_rollups_closed_through();
   v_live   := greatest(p_from, coalesce(v_closed + 1, p_from));
 
@@ -328,6 +341,11 @@ begin
       using errcode = '22023', hint = 'invalid_range';
   end if;
 
+  -- sec-T041 H1: salida temprana si no es miembro ni platform admin.
+  if not (private.is_org_member(p_org_id) or (select private.is_platform_admin())) then
+    return;
+  end if;
+
   v_closed := private.scan_rollups_closed_through();
   v_live   := greatest(p_from, coalesce(v_closed + 1, p_from));
 
@@ -377,6 +395,28 @@ grant select on public.scan_daily_rollups to authenticated;
 grant select, insert, update, delete on public.scan_daily_rollups to service_role;
 
 -- -----------------------------------------------------------------------------
+-- sec-T041 H2: orgs del usuario como conjunto. Las políticas usan
+-- org_id in (select private.my_org_ids()), que se evalúa una vez por consulta
+-- (subplan hasheado) en lugar de llamar a is_org_member() fila a fila.
+-- -----------------------------------------------------------------------------
+create or replace function private.my_org_ids()
+returns setof uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select m.org_id from public.memberships m where m.user_id = (select auth.uid())
+$$;
+
+comment on function private.my_org_ids() is
+  'Organizaciones del usuario actual (auth.uid()). Para políticas RLS de lectura por conjunto. DQR-T041 / sec-T041 H2.';
+
+alter function private.my_org_ids() owner to postgres;
+revoke execute on function private.my_org_ids() from public, anon;
+grant execute on function private.my_org_ids() to authenticated;
+
+-- -----------------------------------------------------------------------------
 -- RLS: solo lectura para miembros (viewer+) y platform admin; sin políticas
 -- de escritura (escriben la función SECURITY DEFINER y service_role).
 -- -----------------------------------------------------------------------------
@@ -386,7 +426,15 @@ create policy scan_daily_rollups_select
   on public.scan_daily_rollups for select
   to authenticated
   using (
-    private.is_org_member(org_id)
+    org_id in (select private.my_org_ids())
+    or (select private.is_platform_admin())
+  );
+
+-- Misma semántica que la política de T022 (miembro de la org o platform
+-- admin), evaluada por conjunto (sec-T041 H2).
+alter policy scan_events_select on public.scan_events
+  using (
+    org_id in (select private.my_org_ids())
     or (select private.is_platform_admin())
   );
 
