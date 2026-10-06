@@ -12,11 +12,13 @@ function SidebarContent({
   active,
   email,
   isAdmin,
+  isPlatformAdmin,
 }: {
   orgs: MyOrg[];
   active: MyOrg | null;
   email: string;
   isAdmin: boolean;
+  isPlatformAdmin: boolean;
 }) {
   return (
     <div className="flex h-full flex-col gap-4 p-3">
@@ -27,7 +29,7 @@ function SidebarContent({
       <OrgSwitcher orgs={orgs} active={active} />
       <SidebarNav isAdmin={isAdmin} />
       <div className="mt-auto border-t pt-3">
-        <UserMenu email={email} />
+        <UserMenu email={email} isPlatformAdmin={isPlatformAdmin} />
       </div>
     </div>
   );
@@ -37,15 +39,17 @@ export function AppShell({
   orgs,
   active,
   email,
+  isPlatformAdmin = false,
   children,
 }: {
   orgs: MyOrg[];
   active: MyOrg | null;
   email: string;
+  isPlatformAdmin?: boolean;
   children: React.ReactNode;
 }) {
   const isAdmin = active?.role === "admin" || active?.role === "owner";
-  const props = { orgs, active, email, isAdmin };
+  const props = { orgs, active, email, isAdmin, isPlatformAdmin };
   return (
     <div className="flex min-h-dvh">
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 border-r bg-sidebar text-sidebar-foreground md:block">
