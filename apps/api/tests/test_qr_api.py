@@ -440,7 +440,7 @@ def test_download_contrast_warning_header(make: Any) -> None:
     assert r.status_code == 200 and "Contraste%20bajo" in r.headers["x-qr-warnings"]
 
 
-@pytest.mark.parametrize("q", ["size=127", "size=4097", "size=abc", "template=poster"])
+@pytest.mark.parametrize("q", ["size=127", "size=4097", "size=abc", "template=banner"])
 def test_download_invalid_params(make: Any, q: str) -> None:
     make("viewer")
     assert TestClient(app).get(d(f"qr.png?{q}"), headers=H).status_code == 422

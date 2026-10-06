@@ -14,6 +14,7 @@ from app.deps import Role, get_current_user, get_db, get_org_id, require_role
 from app.errors import ApiError
 from app.middleware.body_limit import MAX_BODY_BYTES
 from app.schemas.qr import DesignIn, DesignOut
+from app.services.print_templates import MAX_TITLE_LEN
 from app.services.qr_designs import MEDIA, QrDesignService
 from app.services.qr_render import MAX_LOGO_BYTES, MAX_SIZE, MIN_SIZE
 
@@ -74,11 +75,14 @@ async def download_qr(
     fmt: Literal["png", "svg", "pdf"],
     svc: Svc,
     size: Annotated[int, Query(ge=MIN_SIZE, le=MAX_SIZE)] = 1024,
-    template: Annotated[Literal["none"], Query()] = "none",  # plantillas de impresión: T033
+    template: Annotated[Literal["none", "sticker", "display", "poster"], Query()] = "none",
+    title: Annotated[str | None, Query(min_length=1, max_length=MAX_TITLE_LEN)] = None,
 ) -> Response:
-    content, slug, warnings = await svc.render(link_id, fmt, size)
+    """`template` ≠ none: pieza imprimible (mm reales; PNG a 300 dpi, `size` se ignora)."""
+    content, slug, warnings = await svc.render(link_id, fmt, size, template, title)
+    suffix = "qr" if template == "none" else template
     headers = {
-        "Content-Disposition": f'attachment; filename="{slug}-qr.{fmt}"',
+        "Content-Disposition": f'attachment; filename="{slug}-{suffix}.{fmt}"',
         "Cache-Control": "private, no-store",
         "X-Content-Type-Options": "nosniff",
     }

@@ -20,6 +20,7 @@ from app.db import PostgrestError, UserDB
 from app.errors import ApiError
 from app.schemas.qr import DesignIn, DesignOut
 from app.services.limits import plan_limit_error
+from app.services.print_templates import render_template
 from app.services.qr_render import (
     MAX_LOGO_BYTES,
     QrDesign,
@@ -56,6 +57,12 @@ def _map_db_error(exc: PostgrestError) -> ApiError:
     return ApiError(502, "upstream_error", "Error al consultar la base de datos")
 
 
+def _default_title(link: dict[str, Any], slug: str) -> str:
+    """Nombre del enlace apto para la plantilla (≤ 80, sin caracteres de control)."""
+    name = "".join(c if c.isprintable() else " " for c in str(link.get("name") or ""))
+    return " ".join(name.split())[:80].strip() or slug
+
+
 def reencode_logo(data: bytes) -> bytes:
     """Valida (formato, bytes, píxeles) y re-encodea a PNG RGBA limpio (sin metadatos/payloads)."""
     try:
@@ -90,16 +97,33 @@ class QrDesignService:
         except httpx.HTTPError:
             raise ApiError(502, "upstream_error", "No se pudo consultar la base de datos") from None
 
-    async def _slug(self, link_id: UUID) -> str:
+    async def _link(self, link_id: UUID) -> dict[str, Any]:
         rows = await self._run(
             self._db.select(
                 LINKS,
-                {"select": "id,slug", "id": f"eq.{link_id}", "org_id": f"eq.{self._org_id}"},
+                {"select": "id,slug,name", "id": f"eq.{link_id}", "org_id": f"eq.{self._org_id}"},
             )
         )
         if not rows:
             raise ApiError(404, "link_not_found", "Enlace no encontrado")
-        return str(rows[0]["slug"])
+        return dict(rows[0])
+
+    async def _slug(self, link_id: UUID) -> str:
+        return str((await self._link(link_id))["slug"])
+
+    async def _has_nfc(self, link_id: UUID) -> bool:
+        rows = await self._run(
+            self._db.select(
+                "nfc_tags",
+                {
+                    "select": "id",
+                    "link_id": f"eq.{link_id}",
+                    "org_id": f"eq.{self._org_id}",
+                    "limit": "1",
+                },
+            )
+        )
+        return bool(rows)
 
     async def _row(self, link_id: UUID) -> dict[str, Any] | None:
         rows = await self._run(
@@ -283,9 +307,18 @@ class QrDesignService:
 
     # ------------------------------------------------------------------ descargas
 
-    async def render(self, link_id: UUID, fmt: str, size: int) -> tuple[bytes, str, list[str]]:
-        """(contenido, slug, avisos)."""
-        slug = await self._slug(link_id)
+    async def render(
+        self,
+        link_id: UUID,
+        fmt: str,
+        size: int,
+        template: str = "none",
+        title: str | None = None,
+    ) -> tuple[bytes, str, list[str]]:
+        """(contenido, slug, avisos). Con `template` ≠ none: pieza imprimible (DQR-T033)."""
+        link = await self._link(link_id)
+        slug = str(link["slug"])
+        nfc = await self._has_nfc(link_id) if template != "none" else False
         row = await self._row(link_id)
         logo = None
         if row and row.get("logo_path"):
@@ -300,6 +333,15 @@ class QrDesignService:
         warnings = check_design(design)
 
         def work() -> bytes:
+            if template != "none":
+                return render_template(
+                    template,
+                    fmt,  # type: ignore[arg-type]
+                    payload,
+                    design,
+                    title or _default_title(link, slug),
+                    nfc,
+                )
             if fmt == "png":
                 return render_png(payload, design, size)
             if fmt == "pdf":

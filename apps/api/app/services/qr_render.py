@@ -351,16 +351,14 @@ def _module_path(x: float, y: float, style: str) -> str:
     )
 
 
-def render_svg(payload: str, design: QrDesign) -> str:
-    lay = _layout(payload, design)
+def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
+    """Elementos SVG del QR (marco, módulos, logo) en unidades de módulo, sin `<svg>` envolvente.
+
+    Compartido por `render_svg` y las plantillas imprimibles (print_templates). El texto del
+    marco usa `y` de línea base (sin `dominant-baseline`) para importarse bien en Canva.
+    """
     w, h = lay.width, lay.height
-    parts = [
-        '<?xml version="1.0" encoding="UTF-8"?>',
-        f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
-        f'viewBox="0 0 {_f(w)} {_f(h)}" width="{_f(w * 10)}" height="{_f(h * 10)}" '
-        'shape-rendering="geometricPrecision">',
-        "<title>QR</title>",
-    ]
+    parts: list[str] = []
     if lay.border:
         parts.append(
             f'<rect width="{_f(w)}" height="{_f(h)}" rx="{_f(lay.corner)}" fill="{design.fg}"/>'
@@ -371,9 +369,9 @@ def render_svg(payload: str, design: QrDesign) -> str:
         )
         if lay.band:
             parts.append(
-                f'<text x="{_f(w / 2)}" y="{_f(w + lay.band / 2 - 0.5)}" fill="{design.bg}" '
+                f'<text x="{_f(w / 2)}" y="{_f(w + lay.band / 2 - 0.5 + 0.9)}" fill="{design.bg}" '
                 'font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="2.6" '
-                f'text-anchor="middle" dominant-baseline="central">{escape(design.label)}</text>'
+                f'text-anchor="middle">{escape(design.label)}</text>'
             )
     else:
         parts.append(f'<rect width="{_f(w)}" height="{_f(h)}" fill="{design.bg}"/>')
@@ -406,8 +404,20 @@ def render_svg(payload: str, design: QrDesign) -> str:
             f'<image x="{_f(lx)}" y="{_f(ly)}" width="{_f(im.width * scale)}" '
             f'height="{_f(im.height * scale)}" href="data:image/png;base64,{b64}"/>'
         )
-    parts.append("</svg>")
-    return "\n".join(parts)
+    return parts
+
+
+def render_svg(payload: str, design: QrDesign) -> str:
+    lay = _layout(payload, design)
+    w, h = lay.width, lay.height
+    head = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '
+        f'viewBox="0 0 {_f(w)} {_f(h)}" width="{_f(w * 10)}" height="{_f(h * 10)}" '
+        'shape-rendering="geometricPrecision">',
+        "<title>QR</title>",
+    ]
+    return "\n".join([*head, *svg_body(lay, design), "</svg>"])
 
 
 # --------------------------------------------------------------------------- PDF
