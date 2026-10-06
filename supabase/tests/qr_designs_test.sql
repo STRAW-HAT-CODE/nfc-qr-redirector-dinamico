@@ -4,7 +4,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(100);
+select plan(116);
 
 -- -----------------------------------------------------------------------------
 -- Fixtures (como postgres)
@@ -147,6 +147,16 @@ select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/' || re
   'segmento de más de 128 → NULL');
 select is(private.logo_path_org_id('not-a-uuid/logo.png'), null, 'sin uuid → NULL (sin error)');
 select is(private.logo_path_org_id(null), null, 'NULL → NULL');
+-- Extensiones (security H1)
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.PNG'), '0000000a-0000-0000-0000-000000000000'::uuid, 'extensión .PNG (mayúsculas) válida');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.jpg'), '0000000a-0000-0000-0000-000000000000'::uuid, 'extensión .jpg válida');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.jpeg'), '0000000a-0000-0000-0000-000000000000'::uuid, 'extensión .jpeg válida');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.svg'), null, 'extensión .svg → NULL');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.html'), null, 'extensión .html → NULL');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/a.png.html'), null, 'doble extensión acabada en .html → NULL');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/logo'), null, 'sin extensión → NULL');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/dir.png/logo'), null, 'extensión solo en la carpeta → NULL');
+select is(private.logo_path_org_id('0000000a-0000-0000-0000-000000000000/.png'), null, 'solo la extensión (oculto) → NULL');
 
 -- -----------------------------------------------------------------------------
 -- CHECKs (como postgres: las restricciones aplican a todos los roles)
@@ -170,6 +180,12 @@ select throws_ok($$ insert into public.qr_designs (link_id, org_id, logo_path, e
   values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000',
           'logos/0000000a-0000-0000-0000-000000000000/a.png', 'H') $$,
   '23514', null, 'logo_path con formato inválido → falla');
+select throws_ok($$ insert into public.qr_designs (link_id, org_id, logo_path, ecc_level)
+  values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', '0000000a-0000-0000-0000-000000000000/logo.svg', 'H') $$,
+  '23514', null, 'logo_path .svg → falla (H1)');
+select throws_ok($$ insert into public.qr_designs (link_id, org_id, logo_path, ecc_level)
+  values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', '0000000a-0000-0000-0000-000000000000/logo', 'H') $$,
+  '23514', null, 'logo_path sin extensión → falla (H1)');
 select throws_ok($$ insert into public.qr_designs (link_id, org_id, fg)
   values ('a0000000-0000-0000-0000-000000000001', '0000000a-0000-0000-0000-000000000000', 'red') $$,
   '23514', null, 'fg no hex → falla');
@@ -385,6 +401,21 @@ select throws_ok($$ insert into storage.objects (bucket_id, name)
 select throws_ok($$ insert into storage.objects (bucket_id, name)
   values ('other', '0000000a-0000-0000-0000-000000000000/x.png') $$,
   '42501', null, 'las políticas de logos no abren otros buckets');
+select throws_ok($$ insert into storage.objects (bucket_id, name)
+  values ('logos', '0000000a-0000-0000-0000-000000000000/evil.svg') $$,
+  '42501', null, 'editor A no sube .svg (H1)');
+select throws_ok($$ insert into storage.objects (bucket_id, name)
+  values ('logos', '0000000a-0000-0000-0000-000000000000/evil.html') $$,
+  '42501', null, 'editor A no sube .html (H1)');
+select throws_ok($$ insert into storage.objects (bucket_id, name)
+  values ('logos', '0000000a-0000-0000-0000-000000000000/noext') $$,
+  '42501', null, 'editor A no sube sin extensión (H1)');
+select lives_ok($$ insert into storage.objects (bucket_id, name)
+  values ('logos', '0000000a-0000-0000-0000-000000000000/foto.JPEG') $$,
+  'editor A sube .JPEG');
+select throws_ok($$ update storage.objects set name = '0000000a-0000-0000-0000-000000000000/foto.html'
+  where bucket_id = 'logos' and name = '0000000a-0000-0000-0000-000000000000/foto.JPEG' $$,
+  '42501', null, 'editor A no renombra un logo a .html (H1)');
 select lives_ok($$ update storage.objects set metadata = '{"v": 2}'
   where bucket_id = 'logos' and name = '0000000a-0000-0000-0000-000000000000/editor.png' $$,
   'editor A reemplaza (update) su logo');

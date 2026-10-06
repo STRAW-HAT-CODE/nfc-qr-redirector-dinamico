@@ -40,6 +40,9 @@
 --     servir con Content-Disposition: attachment (nuevo ADR).
 --     allowed_mime_types valida el Content-Type declarado, no el contenido:
 --     la API debe comprobar los magic bytes (pendiente qr-nfc).
+--   * Extensión obligatoria .png/.jpg/.jpeg/.webp en logo_path y en los
+--     nombres de objeto del bucket (security H1). Sin cuota de logos por org:
+--     queda en backlog para T053 (límites de plan, security H2).
 --   * storage.objects (bucket logos): la ruta debe empezar por '{org_id}/';
 --     viewer+ de esa org lee; editor+ sube, reemplaza (upsert = INSERT +
 --     SELECT + UPDATE) y borra. Platform admin puede todo. anon nada.
@@ -52,6 +55,9 @@
 -- el formato no es válido. org_id: uuid canónico en minúsculas (= uuid::text).
 -- Segmentos: [A-Za-z0-9_-] seguido de [A-Za-z0-9._-], 1..128 caracteres; no
 -- pueden empezar por '.', así que no hay '.', '..' ni ocultos. Máx. 512.
+-- El último segmento debe acabar en .png, .jpg, .jpeg o .webp (sin distinguir
+-- mayúsculas; security H1): defensa en profundidad frente a CDN/herramientas
+-- que deducen el tipo por la extensión (.html, .svg). SVG no se admite.
 -- Nunca lanza errores (se usa en CHECK y en políticas RLS).
 create or replace function private.logo_path_org_id(p_path text)
 returns uuid
@@ -62,6 +68,7 @@ as $$
   select case
     when char_length(p_path) <= 512
      and p_path ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127})+$'
+     and p_path ~* '\.(png|jpe?g|webp)$'
     then left(p_path, 36)::uuid
   end;
 $$;
