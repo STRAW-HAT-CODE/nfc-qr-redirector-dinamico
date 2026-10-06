@@ -101,3 +101,47 @@ def require_role(
         return user
 
     return checker
+
+
+def get_path_org_id(
+    org: str,
+    x_org_id: Annotated[str | None, Header()] = None,
+) -> UUID:
+    """Org de la ruta `/v1/orgs/{org}/...`.
+
+    Regla: el path manda. Si además llega `X-Org-Id`, debe coincidir con el
+    path; si no, 400 `org_mismatch`.
+    """
+    try:
+        org_id = UUID(org)
+    except ValueError:
+        raise ApiError(400, "invalid_org_id", "El org del path debe ser un UUID válido") from None
+    if x_org_id is not None:
+        try:
+            header_id = UUID(x_org_id)
+        except ValueError:
+            raise ApiError(400, "invalid_org_id", "X-Org-Id debe ser un UUID válido") from None
+        if header_id != org_id:
+            raise ApiError(400, "org_mismatch", "X-Org-Id no coincide con la organización del path")
+    return org_id
+
+
+def require_org_role(
+    min_role: Role | str,
+) -> Callable[..., Coroutine[Any, Any, CurrentUser]]:
+    """Como `require_role`, pero el org sale del path (ver `get_path_org_id`)."""
+    required = Role[min_role] if isinstance(min_role, str) else min_role
+
+    async def checker(
+        user: Annotated[CurrentUser, Depends(get_current_user)],
+        org_id: Annotated[UUID, Depends(get_path_org_id)],
+        db: Annotated[UserDB, Depends(get_db)],
+    ) -> CurrentUser:
+        role = await fetch_role(db, org_id, user.id)
+        if role is None:
+            raise ApiError(403, "not_a_member", "No perteneces a esta organización")
+        if role < required:
+            raise ApiError(403, "insufficient_role", f"Se requiere el rol {required.name}")
+        return user
+
+    return checker
