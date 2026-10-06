@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # Backend compartido opcional (Upstash Redis REST); sin ellas, memoria por instancia.
     upstash_redis_rest_url: str = ""
     upstash_redis_rest_token: str = ""
+    # Observabilidad (DQR-T056).
+    log_level: str = "INFO"
+    log_redirect_sample_rate: float = 1.0  # fracción de /r/* 2xx/3xx/4xx que se loguea (0..1)
+    sentry_dsn: str = ""  # vacío = Sentry desactivado
+    sentry_environment: str = ""
+    vercel_git_commit_sha: str = ""  # lo inyecta Vercel; se expone en /healthz
 
 
 @lru_cache

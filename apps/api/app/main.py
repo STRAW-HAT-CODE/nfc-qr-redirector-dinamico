@@ -1,14 +1,16 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.core.config import get_settings
+from app.core.logging import AccessLogMiddleware, init_sentry, setup_logging
 from app.errors import register_error_handlers
 from app.middleware.body_limit import BodyLimitMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware, build_rate_limiter
 from app.routers import links, nfc, orgs, qr, redirect, stats
-from app.service_db import build_service_client
+from app.service_db import ServiceDB, build_service_client
 
 
 @asynccontextmanager
@@ -21,11 +23,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         await app.state.service_client.aclose()
 
 
+setup_logging()
+init_sentry()
+
 # redirect_slashes=False: Starlette construiría un 307 con la cabecera Host (H2, DQR-T021).
 app = FastAPI(title="Dynamic QR API", lifespan=lifespan, redirect_slashes=False)
 register_error_handlers(app)
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(BodyLimitMiddleware)
+app.add_middleware(AccessLogMiddleware)  # el más externo: ve también los 429
 app.include_router(orgs.router)
 app.include_router(links.router)
 app.include_router(nfc.router)
@@ -34,6 +40,28 @@ app.include_router(stats.router)
 app.include_router(redirect.router)
 
 
+_DB_PING_TIMEOUT_S = 1.0
+
+
+async def _db_ok(request: Request) -> bool:
+    """Ping barato: resolve_link de un slug inexistente (no escribe ni genera eventos)."""
+    try:
+        client = request.app.state.service_client
+        async with asyncio.timeout(_DB_PING_TIMEOUT_S):
+            await ServiceDB(client).rpc("resolve_link", {"p_slug": "healthz-probe"})
+    except Exception:
+        return False
+    return True
+
+
 @app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+async def healthz(request: Request) -> dict[str, str]:
+    """Siempre 200 mientras el proceso viva; `db: degraded` si la BD no responde.
+
+    No devuelve 5xx por la BD para que los monitores no marquen caído un dominio sano.
+    """
+    return {
+        "status": "ok",
+        "version": get_settings().vercel_git_commit_sha or "unknown",
+        "db": "ok" if await _db_ok(request) else "degraded",
+    }
