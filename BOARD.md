@@ -38,7 +38,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
 | DQR-T016 | Auth FastAPI (JWT) | backend-api | IN_REVIEW (PR #6) | T010, T013 |
 | DQR-T017 | API orgs y miembros | backend-api | BACKLOG | T016 |
-| DQR-T018 | Migración dynamic_links + historial | db-architect | IN_PROGRESS (apilada sobre T013) | T013 |
+| DQR-T018 | Migración dynamic_links + historial | db-architect | IN_REVIEW (PR #7 · seguridad APPROVED) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | IN_REVIEW (PR #4) | T010 |
 | DQR-T020 | API CRUD enlaces | backend-api | BACKLOG | T016, T018, T019 |
 | DQR-T021 | Redirector /r/{slug} | backend-api | BACKLOG | T018 |
@@ -90,3 +90,5 @@ AGENT-10 scribe            Docs y tablero                          activo
 | T013 · sec H4 | Flujo para borrar la cuenta del último owner (transferir la propiedad o borrar la org) | product |
 | T013 · sec H5 | Límite de organizaciones por usuario en create_organization (ligado a planes, T053) | product |
 | T016 · orquestador | Platform admin recibe 403 en endpoints de org: hace falta la RPC public.effective_role(org_id) | db-architect (T017/T054) |
+| T018 · sec H8 | La blocklist no es retroactiva: falta un job o vista para enlaces existentes que caen en un dominio bloqueado | security-reviewer / DQR-08 |
+| T018 · ADR-0006 | T020: la API no envía el slug (lo genera la BD); slug.py solo valida el formato | backend-api |
