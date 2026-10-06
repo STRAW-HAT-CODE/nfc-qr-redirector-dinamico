@@ -75,7 +75,9 @@ async def download_qr(
     fmt: Literal["png", "svg", "pdf"],
     svc: Svc,
     size: Annotated[int, Query(ge=MIN_SIZE, le=MAX_SIZE)] = 1024,
-    template: Annotated[Literal["none", "sticker", "display", "poster"], Query()] = "none",
+    template: Annotated[
+        Literal["none", "sticker", "display", "poster", "google_review"], Query()
+    ] = "none",
     title: Annotated[str | None, Query(min_length=1, max_length=MAX_TITLE_LEN)] = None,
 ) -> Response:
     """`template` ≠ none: pieza imprimible (mm reales; PNG a 300 dpi, `size` se ignora)."""

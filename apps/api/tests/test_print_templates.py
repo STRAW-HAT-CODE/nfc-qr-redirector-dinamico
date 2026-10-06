@@ -21,6 +21,7 @@ from app.services.print_templates import (
     CTA_NFC,
     CTA_QR,
     SPECS,
+    Poly,
     Rect,
     Text,
     build_scene,
@@ -165,6 +166,9 @@ def test_content_inside_safe_zone() -> None:
                 assert x0 - 0.01 <= el.x - hw and el.x + hw <= x1 + 0.01
                 assert y0 <= el.y - el.size * 0.72 and el.y <= y1, (tpl, el.id)
                 continue
+            if isinstance(el, Poly):
+                assert all(x0 <= x <= x1 and y0 <= y <= y1 for x, y in el.points), (tpl, el.id)
+                continue
             ex, ey = el.x, el.y
             ew, eh = el.w, el.h
             assert x0 - 0.01 <= ex and ex + ew <= x1 + 0.01, (tpl, el)
@@ -287,3 +291,53 @@ def test_api_invalid_template_and_title_422(api: dict[str, Any]) -> None:
 def test_api_none_template_does_not_query_nfc(api: dict[str, Any]) -> None:
     assert get("qr.svg").status_code == 200
     assert api["nfc_calls"] == 0
+
+
+# ------------------------------------------------------------------ google_review (T060)
+
+
+def test_google_review_scene_and_formats() -> None:
+    from app.services.print_templates import GOOGLE_REVIEW_TEXT
+    from app.services.qr_render import preset_logo
+
+    design = QrDesign(ecc="H", logo=preset_logo("google"))
+    svg = render_template(
+        "google_review", "svg", URL, design, GOOGLE_REVIEW_TEXT, False, "Café Luna"
+    ).decode()
+    assert 'viewBox="0 0 105 148"' in svg
+    assert svg.count("<polygon") == 5 and "Café Luna" in svg and "reseña" in svg
+    assert "data:image/png;base64," in svg
+    assert qr_decodes_ok(raster_svg(svg))
+    pdf = render_template("google_review", "pdf", URL, design, GOOGLE_REVIEW_TEXT, False, "Café")
+    assert pdf.startswith(b"%PDF")
+    assert qr_decodes_ok(pdfium.PdfDocument(pdf)[0].render(scale=4).to_pil())
+    png = render_template("google_review", "png", URL, design, GOOGLE_REVIEW_TEXT, False, "Café")
+    img = Image.open(io.BytesIO(png))
+    assert img.size == (round(105 / 25.4 * 300), round(148 / 25.4 * 300))
+    assert qr_decodes_ok(img)
+
+
+def test_google_review_content_inside_safe_zone() -> None:
+    scene = build_scene("google_review", URL, QrDesign(), "Título " * 8, False, "Local " * 12)
+    x0, y0, x1, y1 = scene.spec.safe_rect
+    for el in scene.elements:
+        if isinstance(el, Text):
+            assert (
+                x0 <= el.x - text_width(el.s, el.size) / 2
+                and el.x + text_width(el.s, el.size) / 2 <= x1
+            )
+            assert el.y <= y1
+
+
+def test_api_google_review_forces_preset_and_title(api: dict[str, Any]) -> None:
+    for fmt in ("svg", "pdf", "png"):
+        r = get(f"qr.{fmt}", template="google_review")
+        assert r.status_code == 200, r.text
+        assert f'filename="{SLUG}-google_review.{fmt}"' in r.headers["content-disposition"]
+    svg = get("qr.svg", template="google_review").text
+    assert "Déjanos tu reseña en Google" in svg and "Menú del día" in svg
+    assert "data:image/png;base64," in svg and qr_decodes_ok(raster_svg(svg))
+    svg = get("qr.svg", template="google_review", title="Cuéntanos tu visita").text
+    assert "Cuéntanos tu visita" in svg and "Déjanos" not in svg and "Menú del día" in svg
+    r = get("qr.png", template="google_review")
+    assert qr_decodes_ok(Image.open(io.BytesIO(r.content)))

@@ -17,6 +17,8 @@ import math
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 from urllib.parse import quote, urlsplit
 from xml.sax.saxutils import escape
@@ -49,6 +51,25 @@ _STYLES = ("square", "rounded", "dots")
 
 class QrRenderError(ValueError):
     """Entrada inválida para la generación de QR."""
+
+
+# Logos incluidos en el repo (DQR-T060). Lista blanca: el nombre nunca es una ruta.
+LOGO_PRESETS: dict[str, str] = {"google": "google-g-1024.png"}
+_ASSETS = Path(__file__).resolve().parent.parent / "assets" / "logos"
+
+
+@lru_cache(maxsize=8)
+def preset_logo(name: str) -> bytes:
+    """Bytes PNG del logo de un preset (`google`). Nombre fuera de la lista blanca → error."""
+    fname = LOGO_PRESETS.get(name) if isinstance(name, str) else None
+    if fname is None:
+        raise QrRenderError("logo_preset inválido")
+    try:
+        data = (_ASSETS / fname).read_bytes()
+    except OSError:
+        raise QrRenderError("asset del preset no disponible") from None
+    _load_logo(data)  # valida
+    return data
 
 
 # --------------------------------------------------------------------------- payload

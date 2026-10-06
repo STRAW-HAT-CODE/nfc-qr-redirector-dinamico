@@ -456,3 +456,69 @@ def test_download_size_limits_ok(make: Any) -> None:
     c = TestClient(app)
     for s in (128, 4096):
         assert c.get(d(f"qr.png?size={s}"), headers=H).status_code == 200
+
+
+# ---------------------------------------------------------------- preset de logo (T060)
+
+PRESET = {"logo_preset": "google"}
+
+
+def test_preset_put_get_forces_ecc_h_and_no_storage(make: Any) -> None:
+    b = make("editor")
+    c = TestClient(app)
+    j = c.put(d(), headers=H, json={"ecc_level": "L", **PRESET}).json()
+    assert j["logo_preset"] == "google" and j["ecc_level"] == "H" and j["has_logo"] is False
+    assert j["style"]["logo_preset"] == "google"
+    assert b.design and b.design["ecc_level"] == "H" and b.design["logo_path"] is None
+    assert b.objects == {}  # no usa Storage ni cuota de logos
+    assert c.get(d(), headers=H).json()["logo_preset"] == "google"
+    # quitar el preset
+    j = c.put(d(), headers=H, json={"ecc_level": "M"}).json()
+    assert j["logo_preset"] is None and j["ecc_level"] == "M"
+
+
+@pytest.mark.parametrize("value", ["facebook", "../../etc/passwd", "", 1, True])
+def test_preset_invalid_422(make: Any, value: Any) -> None:
+    make("editor")
+    r = TestClient(app).put(d(), headers=H, json={"logo_preset": value})
+    assert r.status_code == 422
+
+
+def test_preset_bad_value_in_db_is_ignored(make: Any) -> None:
+    b = make("viewer")
+    b.design = {
+        "link_id": LINK, "fg": "#000000", "bg": "#ffffff", "ecc_level": "M",
+        "frame": "none", "logo_path": None, "style": {"logo_preset": "../x"},
+    }  # fmt: skip
+    j = TestClient(app).get(d(), headers=H).json()
+    assert j["logo_preset"] is None
+    assert TestClient(app).get(d("qr.png"), headers=H).status_code == 200
+
+
+def test_preset_downloads_decode_png_svg_pdf(make: Any) -> None:
+    b = make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json={"ecc_level": "L", **PRESET})
+    r = c.get(d("qr.png?size=800"), headers=H)
+    assert decode_png(r.content) == [URL]
+    with_logo = Image.open(io.BytesIO(r.content)).convert("RGB")
+    # el centro del QR lleva la G (colores, no solo negro/blanco)
+    w = with_logo.width
+    centre = with_logo.crop((w * 2 // 5, w * 2 // 5, w * 3 // 5, w * 3 // 5))
+    assert any(abs(r_ - g_) > 60 or abs(g_ - b_) > 60 for r_, g_, b_ in centre.getdata())
+    svg = c.get(d("qr.svg"), headers=H).text
+    assert "data:image/png;base64," in svg and decode(_raster_svg(svg)) == [URL]
+    pdf = c.get(d("qr.pdf?size=1000"), headers=H).content
+    assert decode(pdfium.PdfDocument(pdf)[0].render(scale=3).to_pil()) == [URL]
+    assert b.objects == {}
+
+
+def test_preset_wins_over_logo_path_and_skips_storage(make: Any) -> None:
+    b = make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("l.png", png_bytes())})
+    c.put(d(), headers=H, json=PRESET)
+    assert b.design and b.design["logo_path"]  # el logo propio no se borra
+    b.objects.clear()  # si se intentara leer de Storage → 404 → 502
+    r = c.get(d("qr.png"), headers=H)
+    assert r.status_code == 200 and decode_png(r.content) == [URL]

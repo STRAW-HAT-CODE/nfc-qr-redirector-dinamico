@@ -40,3 +40,11 @@ GET /v1/links/{id}/qr.svg|pdf|png?template=sticker|display|poster[&title=Mesa 7]
 - Tamaño mínimo recomendado impreso: 2 cm de lado para el bloque del QR.
 - **Prueba siempre**: escanea el resultado con 2 móviles distintos antes de imprimir en cantidad.
 - Si cambias el diseño del QR (colores, logo, marco), vuelve a descargar la plantilla; no edites a mano.
+
+## Reseñas de Google
+Diseño rápido y plantilla para pedir reseñas de un local en Google.
+
+- **Preset**: `PUT /v1/links/{id}/design` con `"logo_preset": "google"` (lista blanca; otro valor → 422) pone la «G» de Google al centro del QR. Fuerza ECC **H**, el logo sale de un asset incluido en el repo (`apps/api/app/assets/logos/`), no de Storage, y **no cuenta en la cuota de logos**. Si el diseño tiene también un logo propio (`logo_path`), **gana el preset** (el logo propio se conserva y vuelve al quitar el preset). Valores recomendados: `fg #000000`, `bg #FFFFFF`, `frame none`, `module_style square`.
+- **Plantilla**: `GET /v1/links/{id}/qr.svg|pdf|png?template=google_review[&title=…]`: tarjeta A6 (105×148 mm) con el texto «¿Te gustó? Déjanos tu reseña en Google» (editable con `title`), 5 estrellas, el QR con la G (siempre, aunque el diseño no tenga el preset) y el nombre del enlace como nombre del local.
+- **Uso de marca**: úsalo **solo para enlazar al perfil de Google Business (reseñas) del propio negocio**, según las [guías de marca de Google](https://about.google/brand-resource-center/). No lo uses para otros destinos, no modifiques los colores de la «G» ni insinúes que Google respalda el servicio.
+- El QR sigue codificando `PUBLIC_REDIRECT_BASE_URL/r/{slug}?c=q`; apunta el enlace a la URL de reseñas de tu ficha de Google.
