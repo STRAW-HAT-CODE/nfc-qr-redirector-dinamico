@@ -33,12 +33,12 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T010 | Scaffold monorepo | devops | IN_REVIEW (PR #2 · espera merge) | T005 |
 | DQR-T011 | CI | devops | IN_REVIEW (PR #3 · CI verde) | T010 |
 | DQR-T012 | Supabase dev/staging + .env.example | devops | DONE (PR #1 · qa PASS) | T005 |
-| DQR-T013 | Migración tenancy + helpers RLS | db-architect | CHANGES_REQUESTED (PR #5 · security-reviewer) | T010, T012 |
+| DQR-T013 | Migración tenancy + helpers RLS | db-architect | IN_REVIEW (PR #5 · seguridad APPROVED) | T010, T012 |
 | DQR-T014 | Tests RLS tenancy | qa | BACKLOG | T013 |
 | DQR-T015 | Revisión seguridad S1 | security-reviewer | BACKLOG | T013, T018, T021, T022 |
-| DQR-T016 | Auth FastAPI (JWT) | backend-api | IN_PROGRESS (apilada sobre T010) | T010, T013 |
+| DQR-T016 | Auth FastAPI (JWT) | backend-api | IN_REVIEW (PR #6) | T010, T013 |
 | DQR-T017 | API orgs y miembros | backend-api | BACKLOG | T016 |
-| DQR-T018 | Migración dynamic_links + historial | db-architect | BACKLOG | T013 |
+| DQR-T018 | Migración dynamic_links + historial | db-architect | IN_PROGRESS (apilada sobre T013) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | IN_REVIEW (PR #4) | T010 |
 | DQR-T020 | API CRUD enlaces | backend-api | BACKLOG | T016, T018, T019 |
 | DQR-T021 | Redirector /r/{slug} | backend-api | BACKLOG | T018 |
@@ -89,3 +89,4 @@ AGENT-10 scribe            Docs y tablero                          activo
 |---|---|---|
 | T013 · sec H4 | Flujo para borrar la cuenta del último owner (transferir la propiedad o borrar la org) | product |
 | T013 · sec H5 | Límite de organizaciones por usuario en create_organization (ligado a planes, T053) | product |
+| T016 · orquestador | Platform admin recibe 403 en endpoints de org: hace falta la RPC public.effective_role(org_id) | db-architect (T017/T054) |
