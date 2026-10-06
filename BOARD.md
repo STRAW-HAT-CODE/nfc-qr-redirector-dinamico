@@ -40,9 +40,9 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T017 | API orgs y miembros | backend-api | TESTING (PR #8 fusionado) | T016 |
 | DQR-T018 | Migración dynamic_links + historial | db-architect | DONE (qa PASS · seguridad APPROVED) | T013 |
 | DQR-T019 | Slug + política de URLs | backend-api | DONE (qa PASS) | T010 |
-| DQR-T020 | API CRUD enlaces | backend-api | IN_REVIEW (PR #10 · rebasando) | T016, T018, T019 |
-| DQR-T021 | Redirector /r/{slug} | backend-api | IN_REVIEW (PR #9 · seguridad revisando) | T018 |
-| DQR-T022 | Migración scan_events | db-architect | IN_REVIEW (PR #11 · seguridad revisando) | T018 |
+| DQR-T020 | API CRUD enlaces | backend-api | TESTING (PR #10 fusionado) | T016, T018, T019 |
+| DQR-T021 | Redirector /r/{slug} | backend-api | CHANGES_REQUESTED (PR #9 · seguridad H1-H3) | T018 |
+| DQR-T022 | Migración scan_events | db-architect | TESTING (PR #11 fusionado · seguimiento scan_clip) | T018 |
 | DQR-T023 | Registro asíncrono del escaneo | backend-api | BACKLOG | T021, T022 |
 | DQR-T024 | Tests S1 | qa | BACKLOG | T020, T023 |
 
