@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.db import PostgrestError, UserDB
 from app.errors import ApiError
 from app.schemas.nfc import NfcTagCreate, NfcTagList, NfcTagOut, NfcTagUpdate
+from app.services.limits import plan_limit_error
 from app.services.qr_render import QrRenderError, qr_payload
 
 LINKS = "dynamic_links"
@@ -38,6 +39,8 @@ def ndef_record_size(url: str) -> int:
 
 
 def map_db_error(exc: PostgrestError) -> ApiError:
+    if (limit := plan_limit_error(exc)) is not None:
+        return limit
     if exc.code == "42501":
         return ApiError(403, "insufficient_role", "No tienes permiso para esta operación")
     if exc.code == "23505":
