@@ -99,6 +99,12 @@ select pg_temp.login('00000000-0000-0000-0000-0000000000b1');
 select lives_ok($$ select public.create_organization('Org B', 'org-b') $$, 'b1 crea Org B');
 select pg_temp.logout();
 
+-- DQR-T053: Org A usa 4 miembros (> 3 del plan free); override sin límite de
+-- miembros para que estos tests sigan centrados en RLS. Los límites se
+-- prueban en plans_test.sql.
+update public.organizations set limits = '{"max_members": null}'
+ where slug = 'org-a';
+
 select set_config('test.org_a', (select id::text from public.organizations where slug = 'org-a'), true);
 select set_config('test.org_b', (select id::text from public.organizations where slug = 'org-b'), true);
 

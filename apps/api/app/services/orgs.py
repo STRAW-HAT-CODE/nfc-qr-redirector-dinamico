@@ -7,14 +7,18 @@ import httpx
 
 from app.db import PostgrestError, UserDB
 from app.errors import ApiError
+from app.services.limits import plan_limit_error
 
 
 def map_db_error(exc: PostgrestError, *, conflict: tuple[str, str] | None = None) -> ApiError:
     """Traduce errores de PostgREST/BD a ApiError.
 
     P0001+hint last_owner → 409 last_owner · 42501 → 403 · 23505 → 409 (`conflict`)
-    · 23503 (FK) → 404. Cualquier otro → 502 sin filtrar detalles de la BD.
+    · 23503 (FK) → 404 · límites de plan → 409 (limits.py). Cualquier otro → 502 sin filtrar
+    detalles de la BD.
     """
+    if (limit := plan_limit_error(exc)) is not None:
+        return limit
     if exc.code == "P0001" and exc.hint == "last_owner":
         return ApiError(409, "last_owner", "No se puede quitar ni degradar al último owner")
     if exc.code == "42501":

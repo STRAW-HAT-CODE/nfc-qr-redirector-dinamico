@@ -17,6 +17,7 @@ from app.schemas.links import (
     LinkStatus,
     LinkUpdate,
 )
+from app.services.limits import plan_limit_error
 from app.services.url_policy import UrlPolicyError, validate_destination
 
 LINKS = "dynamic_links"
@@ -25,6 +26,8 @@ HISTORY = "link_destination_history"
 
 def map_db_error(exc: PostgrestError) -> ApiError:
     """SQLSTATE de la BD → error de API (docs/04-api.md)."""
+    if (limit := plan_limit_error(exc)) is not None:
+        return limit
     if exc.code == "42501":
         return ApiError(403, "insufficient_role", "No tienes permiso para esta operación")
     if exc.code == "23514":
