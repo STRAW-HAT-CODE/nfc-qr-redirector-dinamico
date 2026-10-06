@@ -128,3 +128,35 @@ export interface Member {
 }
 
 export const listMembers = (orgId: string) => api<Member[]>(`/v1/orgs/${orgId}/members`, { orgId });
+
+/* ── Stats (contrato de apps/api/app/schemas/stats.py) ───────────────────── */
+
+export type StatsGroup = "day" | "channel" | "country" | "device";
+
+export interface StatsPoint {
+  key: string;
+  scans: number;
+  /** Solo informado con group=day. */
+  unique_visitors: number | null;
+}
+
+export interface Stats {
+  group: StatsGroup;
+  from: string;
+  to: string;
+  totals: { scans: number; unique_visitors: number };
+  series: StatsPoint[];
+}
+
+/** Las 4 agrupaciones en paralelo. `linkId` → métricas del enlace; si no, de la org activa. */
+export async function getStatsBundle(orgId: string, range: { from: string; to: string }, linkId?: string) {
+  const base = linkId ? `/v1/links/${encodeURIComponent(linkId)}/stats` : `/v1/orgs/${encodeURIComponent(orgId)}/stats`;
+  const get = (group: StatsGroup) => api<Stats>(`${base}?from=${range.from}&to=${range.to}&group=${group}`, { orgId });
+  const [day, channel, country, device] = await Promise.all([
+    get("day"),
+    get("channel"),
+    get("country"),
+    get("device"),
+  ]);
+  return { day, channel, country, device };
+}

@@ -1,4 +1,4 @@
-import { ArrowLeft, Nfc, QrCode } from "lucide-react";
+import { ArrowLeft, BarChart3, Nfc, QrCode } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -53,6 +53,11 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
                 </Link>
               </Button>
             ) : null}
+            <Button asChild variant="outline">
+              <Link href={`/links/${link.id}/stats`}>
+                <BarChart3 /> Métricas
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link href={`/links/${link.id}/nfc`}>
                 <Nfc /> NFC
