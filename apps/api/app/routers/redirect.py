@@ -5,12 +5,13 @@
 - El registro del escaneo (T023) va en una BackgroundTask que nunca rompe la respuesta.
 """
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any
+from urllib.parse import quote
 
-import httpx
 from fastapi import APIRouter, BackgroundTasks, Request, Response
 
 from app.service_db import ServiceDB
@@ -65,8 +66,15 @@ def _not_found(head: bool) -> Response:
     return _page("Enlace no encontrado", "No encontramos el enlace que buscas.", 404, head)
 
 
+_URL_SAFE = "!#$%&'()*+,/:;=?@[]~"
+_RPC_TIMEOUT_S = 1.5
+
+
 def _redirect(url: str) -> Response:
-    return Response(status_code=302, headers={**_NO_STORE, "Location": url})
+    """302 al destino guardado, percent-encoded (UTF-8) y solo http(s)."""
+    if not isinstance(url, str) or not url.startswith(("https://", "http://")):
+        raise ValueError("destino no http(s)")
+    return Response(status_code=302, headers={**_NO_STORE, "Location": quote(url, safe=_URL_SAFE)})
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -102,6 +110,7 @@ def get_service_db(request: Request) -> ServiceDB:
 
 
 @router.api_route("/r/{slug}", methods=["GET", "HEAD"], include_in_schema=False)
+@router.api_route("/r/{slug}/", methods=["GET", "HEAD"], include_in_schema=False)
 async def redirect(
     slug: str,
     request: Request,
@@ -114,16 +123,20 @@ async def redirect(
         return _not_found(head)
 
     try:
-        rows = await get_service_db(request).rpc("resolve_link", {"p_slug": slug})
-    except (httpx.HTTPError, ValueError, KeyError):
+        async with asyncio.timeout(_RPC_TIMEOUT_S):
+            rows = await get_service_db(request).rpc("resolve_link", {"p_slug": slug})
+    except Exception:
         logger.warning("resolve_link falló", exc_info=True)
         return _unavailable(head, status=503)
 
+    if not isinstance(rows, list):
+        logger.warning("resolve_link devolvió un tipo inesperado")
+        return _unavailable(head, status=503)
     if not rows:
         return _not_found(head)
-    link = rows[0]
 
     try:
+        link = rows[0]
         if link["org_status"] != "active":
             response = _unavailable(head)
         elif _is_live(link, datetime.now(UTC)):
@@ -132,7 +145,7 @@ async def redirect(
             response = _redirect(link["fallback_url"])
         else:
             response = _unavailable(head)
-    except (KeyError, ValueError, TypeError):
+    except Exception:  # cualquier fila malformada → 503 genérico
         logger.warning("fila de resolve_link inválida", exc_info=True)
         return _unavailable(head, status=503)
 

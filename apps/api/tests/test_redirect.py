@@ -241,3 +241,72 @@ def test_handler_latency_reference(client: TestClient) -> None:
     samples.sort()
     print(f"latency ms p50={samples[100]:.2f} p95={samples[190]:.2f}")
     assert samples[190] < 150
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    ("dest", "expected"),
+    [
+        ("https://example.com/ñandú", "https://example.com/%C3%B1and%C3%BA"),
+        ("https://example.com/😀", "https://example.com/%F0%9F%98%80"),
+        ("https://example.com/a%20b?x=1&y=2", "https://example.com/a%20b?x=1&y=2"),
+        ("https://[2001:db8::1]:8443/p", "https://[2001:db8::1]:8443/p"),
+        ('https://example.com/a b"<>', "https://example.com/a%20b%22%3C%3E"),
+    ],
+)
+def test_location_is_percent_encoded(client: TestClient, dest: str, expected: str) -> None:
+    mock_rows([row(destination_url=dest)])
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 302
+    assert r.headers["location"] == expected
+
+
+@respx.mock
+def test_trailing_slash_has_no_host_redirect(client: TestClient) -> None:
+    mock_rows([row()])
+    r = client.get(f"/r/{SLUG}/", headers={"Host": "evil.com"})
+    assert r.status_code == 302
+    assert r.headers["location"] == DEST
+    assert_safe(r)
+    r = client.head(f"/r/{SLUG}/", headers={"Host": "evil.com"})
+    assert r.status_code == 302 and "evil.com" not in r.headers["location"]
+    # sin redirect_slashes: una ruta desconocida con barra no genera 307
+    assert client.get("/healthz/", headers={"Host": "evil.com"}).status_code == 404
+
+
+@respx.mock
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"a": 1},
+        None,
+        "",
+        [None],
+        [row(destination_url=None)],
+        [row(destination_url="")],
+        [row(destination_url="javascript:alert(1)")],
+        [row(destination_url="//evil.com")],
+        [row(status="paused", fallback_url="javascript:alert(1)")],
+    ],
+)
+def test_malformed_db_payload_is_503(client: TestClient, payload: Any) -> None:
+    respx.post(RPC).mock(return_value=httpx.Response(200, json=payload))
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 503
+    assert "location" not in r.headers
+    assert_safe(r)
+
+
+@respx.mock
+def test_rpc_total_timeout_is_503(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    import asyncio
+
+    async def slow(_: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(1)
+        return httpx.Response(200, json=[row()])
+
+    monkeypatch.setattr(redirect_mod, "_RPC_TIMEOUT_S", 0.05)
+    respx.post(RPC).mock(side_effect=slow)
+    r = client.get(f"/r/{SLUG}")
+    assert r.status_code == 503
+    assert_safe(r)
