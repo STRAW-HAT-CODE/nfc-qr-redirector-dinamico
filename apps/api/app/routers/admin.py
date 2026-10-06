@@ -9,13 +9,13 @@ from app.db import UserDB
 from app.deps import get_current_user, get_db
 from app.schemas.admin import (
     AdminLinkOut,
-    AdminLinkStatusOut,
+    AdminLinkSuspendOut,
     AdminOrgOut,
     AdminOrgRow,
     AdminOrgUpdate,
     BlockedDomainIn,
     BlockedDomainOut,
-    LinkStatusUpdate,
+    LinkSuspendIn,
 )
 from app.services import admin as svc
 
@@ -70,6 +70,7 @@ async def find_links(
     return [AdminLinkOut(**r) for r in await svc.find_links(db, slug)]
 
 
-@router.patch("/links/{link_id}/status", response_model=AdminLinkStatusOut)
-async def set_link_status(link_id: UUID, body: LinkStatusUpdate, db: DB) -> AdminLinkStatusOut:
-    return AdminLinkStatusOut(**await svc.set_link_status(db, link_id, body.status.value))
+@router.patch("/links/{link_id}/suspend", response_model=AdminLinkSuspendOut)
+async def suspend_link(link_id: UUID, body: LinkSuspendIn, db: DB) -> AdminLinkSuspendOut:
+    row = await svc.suspend_link(db, link_id, body.suspended, body.reason)
+    return AdminLinkSuspendOut(**row)

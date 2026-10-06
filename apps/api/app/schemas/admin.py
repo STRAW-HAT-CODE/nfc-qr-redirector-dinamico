@@ -15,12 +15,6 @@ class OrgStatus(StrEnum):
     suspended = "suspended"
 
 
-class LinkStatus(StrEnum):
-    active = "active"
-    paused = "paused"
-    archived = "archived"
-
-
 class MeOut(BaseModel):
     user_id: str
     email: str | None
@@ -79,10 +73,11 @@ class BlockedDomainOut(BaseModel):
     created_at: datetime
 
 
-class LinkStatusUpdate(BaseModel):
+class LinkSuspendIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: LinkStatus
+    suspended: bool
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500)] | None = None
 
 
 class AdminLinkOut(BaseModel):
@@ -96,8 +91,10 @@ class AdminLinkOut(BaseModel):
     created_at: datetime
 
 
-class AdminLinkStatusOut(BaseModel):
+class AdminLinkSuspendOut(BaseModel):
     id: UUID
     org_id: UUID
     slug: str
     status: str
+    suspended_at: datetime | None = None
+    suspended_reason: str | None = None

@@ -11,15 +11,13 @@ import httpx
 from app.db import PostgrestError, UserDB
 from app.errors import ApiError
 
-_NIL_UUID = "00000000-0000-0000-0000-000000000000"
-
 
 def map_admin_error(exc: PostgrestError) -> ApiError:
     if exc.code == "42501":
         return ApiError(403, "not_platform_admin", "Requiere ser administrador de plataforma")
-    if exc.code in ("P0002", "23503"):
+    if exc.code == "P0002":
         return ApiError(404, "not_found", "Recurso no encontrado")
-    if exc.code in ("23514", "22023", "22P02", "22001"):
+    if exc.code in ("23503", "23514", "22023", "22P02", "22001"):
         return ApiError(422, "validation_error", "Datos inválidos")
     return ApiError(502, "upstream_error", "Error al consultar la base de datos")
 
@@ -45,12 +43,8 @@ def _rows(result: Any) -> list[dict[str, Any]]:
 
 
 async def is_platform_admin(db: UserDB) -> bool:
-    """`my_effective_role` devuelve 'owner' en cualquier org solo para platform admins.
-
-    Una org inexistente (nil UUID) no tiene membresías, así que 'owner' implica admin.
-    """
-    role = await _rpc(db, "my_effective_role", {"p_org_id": _NIL_UUID})
-    return bool(role == "owner")
+    """RPC `am_i_platform_admin()`: solo informa a la UI; la autorización real es la BD."""
+    return bool(await _rpc(db, "am_i_platform_admin", {}))
 
 
 async def list_orgs(db: UserDB, q: str | None, limit: int, offset: int) -> list[dict[str, Any]]:
@@ -86,6 +80,8 @@ async def find_links(db: UserDB, slug: str) -> list[dict[str, Any]]:
     return _rows(await _rpc(db, "admin_find_link", {"p_slug": slug}))
 
 
-async def set_link_status(db: UserDB, link_id: UUID, status: str) -> dict[str, Any]:
-    args = {"p_link_id": str(link_id), "p_status": status}
-    return _one(await _rpc(db, "admin_set_link_status", args))
+async def suspend_link(
+    db: UserDB, link_id: UUID, suspended: bool, reason: str | None
+) -> dict[str, Any]:
+    args = {"p_link_id": str(link_id), "p_suspended": suspended, "p_reason": reason}
+    return _one(await _rpc(db, "admin_suspend_link", args))

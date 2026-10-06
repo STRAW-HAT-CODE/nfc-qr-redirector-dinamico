@@ -65,9 +65,9 @@ def test_401_without_token() -> None:
 
 
 # --- /v1/me --------------------------------------------------------------------------
-@pytest.mark.parametrize(("role", "expected"), [("owner", True), (None, False), ("admin", False)])
-def test_me(client: TestClient, mock: respx.MockRouter, role: str | None, expected: bool) -> None:
-    route = rpc(mock, "my_effective_role", body=role)
+@pytest.mark.parametrize("expected", [True, False])
+def test_me(client: TestClient, mock: respx.MockRouter, expected: bool) -> None:
+    route = rpc(mock, "am_i_platform_admin", body=expected)
     r = client.get("/v1/me")
     assert r.status_code == 200
     assert r.json() == {"user_id": "u1", "email": "u@example.com", "is_platform_admin": expected}
@@ -84,7 +84,7 @@ def test_me(client: TestClient, mock: respx.MockRouter, role: str | None, expect
         ("POST", "/v1/admin/blocked-domains", "admin_block_domain", {"domain": "evil.com"}),
         ("DELETE", "/v1/admin/blocked-domains", "admin_unblock_domain", {"domain": "evil.com"}),
         ("GET", "/v1/admin/links?slug=abc", "admin_find_link", None),
-        ("PATCH", f"/v1/admin/links/{LINK}/status", "admin_set_link_status", {"status": "paused"}),
+        ("PATCH", f"/v1/admin/links/{LINK}/suspend", "admin_suspend_link", {"suspended": True}),
     ],
 )
 def test_403_normal_user(
@@ -167,7 +167,7 @@ def test_block_domain_invalid_is_422(client: TestClient, mock: respx.MockRouter)
     assert client.post("/v1/admin/blocked-domains", json={"domain": "no_valid"}).status_code == 422
 
 
-def test_find_link_and_set_status(client: TestClient, mock: respx.MockRouter) -> None:
+def test_find_link_and_suspend(client: TestClient, mock: respx.MockRouter) -> None:
     row = {
         "id": LINK,
         "org_id": ORG,
@@ -181,11 +181,28 @@ def test_find_link_and_set_status(client: TestClient, mock: respx.MockRouter) ->
     rpc(mock, "admin_find_link", body=[row])
     assert client.get("/v1/admin/links", params={"slug": "Ab3dE01"}).json()[0]["org_name"] == "Acme"
     assert client.get("/v1/admin/links").status_code == 422
-    rpc(mock, "admin_set_link_status", body={**row, "status": "paused"})
-    r = client.patch(f"/v1/admin/links/{LINK}/status", json={"status": "paused"})
+    route = rpc(
+        mock,
+        "admin_suspend_link",
+        body={**row, "suspended_at": NOW, "suspended_reason": "abuso"},
+    )
+    r = client.patch(f"/v1/admin/links/{LINK}/suspend", json={"suspended": True, "reason": "abuso"})
     assert r.status_code == 200
-    assert r.json()["status"] == "paused"
-    assert client.patch(f"/v1/admin/links/{LINK}/status", json={"status": "x"}).status_code == 422
+    assert r.json()["suspended_at"] == "2026-01-01T00:00:00Z"
+    import json
+
+    assert json.loads(route.calls[0].request.content) == {
+        "p_link_id": LINK,
+        "p_suspended": True,
+        "p_reason": "abuso",
+    }
+    for bad in ({}, {"suspended": "x"}, {"status": "paused"}):
+        assert client.patch(f"/v1/admin/links/{LINK}/suspend", json=bad).status_code == 422
+
+
+def test_unknown_plan_is_422(client: TestClient, mock: respx.MockRouter) -> None:
+    rpc(mock, "admin_update_org", 409, {"code": "23503", "message": "fk plan"})
+    assert client.patch(f"/v1/admin/orgs/{ORG}", json={"plan": "nope"}).status_code == 422
 
 
 def test_upstream_failure_is_502(client: TestClient, mock: respx.MockRouter) -> None:
