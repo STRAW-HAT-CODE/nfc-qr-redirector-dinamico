@@ -238,3 +238,28 @@ def test_error_attributes() -> None:
 def test_idempotent() -> None:
     once = check("HTTPS://münchen.de:443/x?y=1")
     assert check(once) == once
+
+
+@pytest.mark.parametrize(
+    ("entry", "url"),
+    [
+        ("ejemplo-ñ.com", "https://ejemplo-ñ.com/x"),
+        ("EJEMPLO-Ñ.com", "https://sub.xn--ejemplo--k3a.com"),
+        ("xn--ejemplo--k3a.com", "https://ejemplo-ñ.com"),
+        (".ejemplo-ñ.com.", "https://www.ejemplo-ñ.com"),
+    ],
+)
+def test_blocked_domain_idn_entries(entry: str, url: str) -> None:
+    assert code_of(url, blocked_domains=frozenset({entry})) == "url_blocked_domain"
+
+
+def test_blocklist_ignores_unencodable_entries() -> None:
+    bad = frozenset({"a" * 64 + ".com", "a..b", "", "  ", "evil.com"})
+    assert code_of("https://evil.com", blocked_domains=bad) == "url_blocked_domain"
+    assert check("https://example.com", blocked_domains=bad) == "https://example.com"
+
+
+def test_self_redirect_idn_base_url() -> None:
+    assert code_of("https://ejemplo-ñ.com/x", redirector_base_url="https://ejemplo-ñ.com") == (
+        "url_self_redirect"
+    )

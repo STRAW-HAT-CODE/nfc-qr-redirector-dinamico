@@ -82,8 +82,20 @@ def _matches_domain(host: str, domain: str) -> bool:
     return host == domain or host.endswith("." + domain)
 
 
+def _to_ascii_domain(domain: str) -> str | None:
+    """Minúsculas, sin puntos extremos y en punycode; None si no es codificable."""
+    domain = domain.strip().strip(".").lower()
+    if not domain:
+        return None
+    try:
+        return domain.encode("idna").decode("ascii")
+    except UnicodeError:
+        return None
+
+
 def _normalize_domains(domains: frozenset[str]) -> frozenset[str]:
-    return frozenset(d.strip().lower().strip(".") for d in domains if d.strip().strip("."))
+    normalized = (_to_ascii_domain(d) for d in domains)
+    return frozenset(d for d in normalized if d)
 
 
 def _redirector_host(base_url: str) -> str | None:
@@ -94,7 +106,7 @@ def _redirector_host(base_url: str) -> str | None:
         host = parts.hostname
     except ValueError:
         return None
-    return host.rstrip(".") if host else None
+    return _to_ascii_domain(host) if host else None
 
 
 def _split(url: str) -> SplitResult:
@@ -184,7 +196,7 @@ def validate_destination(
         else get_settings().public_redirect_base_url
     )
     own_host = _redirector_host(base)
-    if own_host and _matches_domain(host, own_host.lower()):
+    if own_host and _matches_domain(host, own_host):
         raise UrlPolicyError(URL_SELF_REDIRECT, "El destino apunta al propio redirector.")
 
     netloc = f"[{host}]" if ":" in host else host
