@@ -71,6 +71,11 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T048 | Miembros UI | frontend | DONE (qa PASS) | T043 |
 | DQR-T049 | E2E Playwright | qa | DONE (E2E PASS contra staging, limpieza verificada) | T045, T047 |
 
+## Extra (petición del usuario)
+| ID | Tarea | Agente | Estado | Dependencias |
+|---|---|---|---|---|
+| DQR-T060 | Preset "Reseñas de Google" (logo G + plantilla) | qr-nfc + frontend | DONE (PR #47/#48 · en producción) | T032, T045 |
+
 ## Sprint 4 — Seguridad, plataforma, producción
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
@@ -81,7 +86,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 | DQR-T054 | Consola Monky | frontend | DONE (qa PASS) | T043, T053 |
 | DQR-T055 | Deploy Vercel + dominio | devops | DONE (prod: dqr-web.vercel.app + dqr-api.vercel.app · Supabase nfc-redirect-api) | T011 |
 | DQR-T056 | Observabilidad | devops | DONE (qa PASS · pulido en curso) | T055 |
-| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | IN_PROGRESS (B1,B2,B4,B5,N1 cerrados · advisors prod sin errores · falta activar leaked password protection) | T050–T052, T054 |
+| DQR-T057 | Auditoría pre-lanzamiento | security-reviewer | DONE (GO: B1–B5 y N1 cerrados; advisors prod sin errores; leaked password protection activa) | T050–T052, T054 |
 | DQR-T058 | Regresión + smoke prod | qa | DONE (smoke prod OK: healthz db ok, /r 404, web 200 con cabeceras; platform admin dado de alta) | T055, T057 |
 
 ## Backlog abierto por revisiones
