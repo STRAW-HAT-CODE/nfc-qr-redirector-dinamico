@@ -5,7 +5,7 @@ from fastapi import FastAPI
 
 from app.core.config import get_settings
 from app.errors import register_error_handlers
-from app.routers import links, orgs, redirect
+from app.routers import links, nfc, orgs, redirect
 from app.service_db import build_service_client
 
 
@@ -23,6 +23,7 @@ app = FastAPI(title="Dynamic QR API", lifespan=lifespan, redirect_slashes=False)
 register_error_handlers(app)
 app.include_router(orgs.router)
 app.include_router(links.router)
+app.include_router(nfc.router)
 app.include_router(redirect.router)
 
 
