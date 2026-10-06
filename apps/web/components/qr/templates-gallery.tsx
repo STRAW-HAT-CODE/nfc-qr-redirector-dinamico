@@ -1,4 +1,4 @@
-import { FileText, Monitor, Sticker } from "lucide-react";
+import { FileText, Monitor, Star, Sticker } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +8,7 @@ export const TEMPLATES = [
   { id: "sticker", name: "Sticker", icon: Sticker },
   { id: "display", name: "Display", icon: Monitor },
   { id: "poster", name: "Póster A4", icon: FileText },
+  { id: "google_review", name: "Reseña en Google", icon: Star },
 ] as const;
 
 export function TemplatesGallery() {
@@ -15,10 +16,10 @@ export function TemplatesGallery() {
     <Card>
       <CardHeader>
         <CardTitle>Plantillas de impresión</CardTitle>
-        <CardDescription>Sticker / Display / Póster A4: próximamente.</CardDescription>
+        <CardDescription>Sticker / Display / Póster A4 / Reseña en Google: próximamente.</CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="grid grid-cols-3 gap-3">
+        <ul className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {TEMPLATES.map(({ id, name, icon: Icon }) => (
             <li key={id} className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-3 text-center opacity-70">
               <Icon className="size-6 text-muted-foreground" aria-hidden="true" />
