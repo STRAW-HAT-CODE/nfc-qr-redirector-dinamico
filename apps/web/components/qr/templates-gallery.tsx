@@ -1,6 +1,9 @@
-import { Download, FileText, Monitor, Star, Sticker } from "lucide-react";
+"use client";
+
+import { ChevronDown, Download, FileText, Monitor, Star, Sticker } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { qrUrl } from "./download-menu";
@@ -23,21 +26,28 @@ export function TemplatesGallery({ linkId, dirty }: { linkId: string; dirty?: bo
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {TEMPLATES.map(({ id, name, icon: Icon, hint }) => (
-            <li key={id} className="flex flex-col items-center gap-2 rounded-lg border p-3 text-center">
+            <li key={id} className="flex min-w-0 flex-col items-center gap-2 rounded-lg border p-4 text-center">
               <Icon className="size-6 text-muted-foreground" aria-hidden="true" />
               <span className="text-sm font-medium">{name}</span>
               <span className="text-xs text-muted-foreground">{hint}</span>
-              <div className="flex gap-1.5">
-                {(["svg", "pdf", "png"] as const).map((f) => (
-                  <Button key={f} asChild variant="outline" size="sm">
-                    <a href={qrUrl(linkId, f, { template: id })} download aria-label={`Descargar ${name} en ${f.toUpperCase()}`}>
-                      <Download aria-hidden="true" /> {f.toUpperCase()}
-                    </a>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="mt-auto w-full" aria-label={`Descargar plantilla ${name}`}>
+                    <Download aria-hidden="true" /> Descargar <ChevronDown aria-hidden="true" />
                   </Button>
-                ))}
-              </div>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center">
+                  {(["svg", "pdf", "png"] as const).map((f) => (
+                    <DropdownMenuItem key={f} asChild>
+                      <a href={qrUrl(linkId, f, { template: id })} download>
+                        <Download aria-hidden="true" /> {f.toUpperCase()}
+                      </a>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </li>
           ))}
         </ul>
