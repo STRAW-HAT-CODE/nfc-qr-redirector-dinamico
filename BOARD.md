@@ -74,6 +74,7 @@ AGENT-10 scribe            Docs y tablero                          activo
 ## Extra (petición del usuario)
 | ID | Tarea | Agente | Estado | Dependencias |
 |---|---|---|---|---|
+| DQR-T063 | Eliminar enlace definitivamente (admin+, con confirmación) | backend-api + frontend | DONE (PR #55/#56 · en producción) | T020, T044 |
 | DQR-T061 | Fondo transparente + plantillas de impresión conectadas (fuente con acentos) | qr-nfc + frontend | DONE (PR #50–#53 · en producción) | T060 |
 | DQR-T060 | Preset "Reseñas de Google" (logo G + plantilla) | qr-nfc + frontend | DONE (PR #47/#48 · en producción) | T032, T045 |
 
