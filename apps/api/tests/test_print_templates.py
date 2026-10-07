@@ -341,3 +341,58 @@ def test_api_google_review_forces_preset_and_title(api: dict[str, Any]) -> None:
     assert "Cuéntanos tu visita" in svg and "Déjanos" not in svg and "Menú del día" in svg
     r = get("qr.png", template="google_review")
     assert qr_decodes_ok(Image.open(io.BytesIO(r.content)))
+
+
+# ---------------------------------------------------------------- fuente incluida (acentos)
+
+ACCENTS = "¿Te gustó? Déjanos tu reseña en Google Reseñas Escanéame ¡ÁÉÍÓÚÜÑ"
+
+
+def test_bundled_font_has_spanish_glyphs() -> None:
+    from fontTools.ttLib import TTFont
+
+    from app.services.qr_fonts import BOLD_FILE, FONT_DIR
+
+    for f in FONT_DIR.glob("NotoSans-*.ttf"):
+        cmap = TTFont(f).getBestCmap()
+        missing = [c for c in ACCENTS if c != " " and ord(c) not in cmap]
+        assert not missing, (f.name, missing)
+    assert BOLD_FILE.exists() and (FONT_DIR / "LICENSE-OFL.txt").exists()
+
+
+def test_google_review_png_accents_not_notdef() -> None:
+    from app.services.print_templates import GOOGLE_REVIEW_TEXT
+    from app.services.qr_fonts import load_font
+
+    font = load_font(60)
+    notdef = font.getmask("￾")  # carácter ausente → .notdef
+    for ch in "¿óéñÓ":
+        m = font.getmask(ch)
+        assert m.getbbox() is not None
+        assert (m.size, bytes(m)) != (notdef.size, bytes(notdef))
+    png = render_template(
+        "google_review", "png", URL, QrDesign(), GOOGLE_REVIEW_TEXT, False, "Café"
+    )
+    assert png.startswith(b"\x89PNG")
+
+
+def test_pdf_embeds_font_and_text_extracts_with_accents() -> None:
+    import pypdfium2 as pdfium
+
+    from app.services.print_templates import GOOGLE_REVIEW_TEXT
+
+    pdf = render_template(
+        "google_review", "pdf", URL, QrDesign(), GOOGLE_REVIEW_TEXT, False, "Café"
+    )
+    assert b"/FontFile2" in pdf and b"NotoSans-Bold" in pdf
+    text = pdfium.PdfDocument(pdf)[0].get_textpage().get_text_range()
+    assert "¿Te gustó?" in text and "reseña" in text
+
+
+def test_svg_declares_noto_with_fallback() -> None:
+    from app.services.print_templates import GOOGLE_REVIEW_TEXT
+
+    svg = render_template(
+        "google_review", "svg", URL, QrDesign(), GOOGLE_REVIEW_TEXT, False
+    ).decode()
+    assert "Noto Sans" in svg and "Helvetica" in svg and "¿Te gustó?" in svg

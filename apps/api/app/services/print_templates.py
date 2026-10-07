@@ -11,21 +11,27 @@ Medidas (mm):
 
 Compatibilidad con Canva: texto como `<text>` (una línea por elemento, `y` = línea base, sin
 `dominant-baseline`), sin filtros ni máscaras, `viewBox` en mm y fuentes de sistema
-(Helvetica/Arial; en PDF la Helvetica estándar, sin licencias).
+(Noto Sans Bold, OFL, en assets/fonts: incrustada en PDF y usada en PNG; el SVG declara
+'Noto Sans' con Helvetica/Arial como alternativa y sin <style>, por Canva).
 """
 
 from __future__ import annotations
 
 import io
 import math
-import unicodedata
 import zlib
 from dataclasses import dataclass, replace
 from typing import Literal
 from xml.sax.saxutils import escape
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
+from app.services.qr_fonts import (
+    SVG_FAMILY,
+    load_font,
+    pdf_font_objects,
+    string_width,
+)
 from app.services.qr_render import (
     QrDesign,
     QrRenderError,
@@ -46,20 +52,10 @@ GOOGLE_REVIEW_TEXT = "¿Te gustó? Déjanos tu reseña en Google"
 STAR_COLOR = "#FBBC04"
 MAX_TITLE_LEN = 80
 DPI = 300
-FONT_FAMILY = "Helvetica, Arial, sans-serif"
+FONT_FAMILY = SVG_FAMILY
 CTA_QR = "Escanéame"
 CTA_NFC = "Acerca tu móvil"
 _MM_PT = 72 / 25.4
-
-# Anchos de Helvetica-Bold (AFM, 1/1000 em) para ASCII 32..126.
-_HB = [
-    278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278,
-    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611,
-    975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778,
-    667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556,
-    333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
-    611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
-]  # fmt: skip
 
 
 # --------------------------------------------------------------------------- especificación
@@ -108,15 +104,8 @@ def clean_title(title: str) -> str:
 
 
 def text_width(s: str, size: float) -> float:
-    """Ancho aproximado en mm de `s` en Helvetica-Bold a `size` mm."""
-    total = 0
-    for ch in s:
-        if ch == "…":
-            total += 1000
-            continue
-        base = unicodedata.normalize("NFD", ch)[0]
-        total += _HB[ord(base) - 32] if 32 <= ord(base) <= 126 else 556
-    return total / 1000 * size
+    """Ancho en mm de `s` en Noto Sans Bold (la fuente incluida) a `size` mm."""
+    return string_width(s, size)
 
 
 def _wrap(text: str, size: float, max_w: float) -> list[str]:
@@ -480,9 +469,8 @@ def render_pdf_template(scene: Scene) -> bytes:
             f"/Resources << /Font << /F1 4 0 R >> /XObject << {xobj}>> >> /Contents 5 0 R >>"
         ).encode()
     )
-    objs.append(
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
-    )
+    font_objs = pdf_font_objects(6 + n_img + 1)
+    objs.append(font_objs[0])
     objs.append(
         f"<< /Length {len(content)} /Filter /FlateDecode >>\nstream\n".encode()
         + content
@@ -498,6 +486,7 @@ def render_pdf_template(scene: Scene) -> bytes:
             + data
             + b"\nendstream"
         )
+    objs.extend(font_objs[1:])  # descriptor + FontFile2 (tras las imágenes)
     out = io.BytesIO()
     out.write(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
     offsets: list[int] = []
@@ -532,7 +521,7 @@ def render_png_template(scene: Scene) -> bytes:
         elif isinstance(el, Poly):
             d.polygon([(x * ppm, y * ppm) for x, y in el.points], fill=el.fill)
         elif isinstance(el, Text):
-            font = ImageFont.load_default(size=max(8, round(el.size * ppm * 1.05)))
+            font = load_font(max(8, round(el.size * ppm * 1.05)))
             d.text((el.x * ppm, el.y * ppm), el.s, fill=el.fill, font=font, anchor="ms")
         else:
             px = max(128, round(el.w * ppm))
