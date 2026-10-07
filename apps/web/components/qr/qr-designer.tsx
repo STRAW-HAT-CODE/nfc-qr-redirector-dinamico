@@ -147,11 +147,15 @@ export function QrDesigner({
             <ColorPicker label="Color del QR" value={draft.fg} onChange={(v) => set("fg", v)} disabled={locked} />
             <ColorPicker label="Fondo" value={draft.bg} onChange={(v) => set("bg", v)} disabled={locked || draft.bg_transparent} />
           </div>
-          <label className="flex items-start gap-3 text-sm">
+          <label className="flex cursor-pointer items-start gap-3 text-sm">
             <input
               type="checkbox" role="switch" checked={draft.bg_transparent} disabled={locked}
               onChange={(e) => set("bg_transparent", e.target.checked)}
-              aria-describedby="bg-transparent-help" className="mt-1 size-4 accent-primary"
+              aria-describedby="bg-transparent-help" className="peer sr-only"
+            />
+            <span
+              aria-hidden="true"
+              className="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-input transition-colors after:absolute after:left-0.5 after:top-0.5 after:size-4 after:rounded-full after:bg-background after:shadow after:transition-transform peer-checked:bg-primary peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-disabled:opacity-50"
             />
             <span className="grid gap-0.5">
               <span className="font-medium">Fondo transparente</span>
