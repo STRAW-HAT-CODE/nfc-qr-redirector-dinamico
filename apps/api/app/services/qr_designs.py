@@ -221,6 +221,8 @@ class QrDesignService:
                 except (QrRenderError, TypeError):
                     continue
                 extra[key] = style[key]
+        if style.get("bg_transparent") is True:
+            extra["bg_transparent"] = True
         preset = _row_preset(row)
         if preset:  # el preset gana sobre logo_path; el logo sale del asset incluido
             logo = preset_logo(preset)
@@ -263,6 +265,7 @@ class QrDesignService:
                 module_style=body.module_style,
                 margin=body.margin,
                 frame_text=body.frame_text or None,
+                bg_transparent=body.bg_transparent,
             )
         except QrRenderError as exc:
             raise ApiError(422, "design_invalid", str(exc)) from None
@@ -273,6 +276,8 @@ class QrDesignService:
             style["frame_text"] = body.frame_text
         if body.logo_preset:
             style["logo_preset"] = body.logo_preset
+        if body.bg_transparent:
+            style["bg_transparent"] = True
         row = {
             "link_id": str(link_id),
             "org_id": str(self._org_id),
@@ -344,6 +349,8 @@ class QrDesignService:
             logo = await self._fetch_logo(str(row["logo_path"]))
         try:
             design = self._to_design(row, logo)
+            if template != "none":  # las piezas imprimibles llevan su propio fondo
+                design = replace(design, bg_transparent=False)
             if template == "google_review":  # la plantilla siempre lleva la G, con ECC H
                 design = replace(design, logo=preset_logo("google"))
             payload = qr_payload(self._settings.public_redirect_base_url, slug, "q")

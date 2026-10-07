@@ -16,7 +16,7 @@ import io
 import math
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -118,6 +118,9 @@ class QrDesign:
     frame_text: str | None = None  # solo marco "label"; por defecto "Escanéame"
     module_style: ModuleStyle = "square"
     margin: int = 4
+    # PNG RGBA / SVG sin fondo; el PDF mantiene blanco (formato de impresión). `bg` sigue siendo
+    # el color de referencia (contraste y texto del marco).
+    bg_transparent: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fg", _norm_hex(self.fg, "fg"))
@@ -128,6 +131,8 @@ class QrDesign:
             raise QrRenderError("frame inválido")
         if self.module_style not in _STYLES:
             raise QrRenderError("module_style inválido")
+        if not isinstance(self.bg_transparent, bool):
+            raise QrRenderError("bg_transparent debe ser booleano")
         if not isinstance(self.margin, int) or not 0 <= self.margin <= 16:
             raise QrRenderError("margin debe estar entre 0 y 16 módulos")
         if self.frame_text is not None and (
@@ -197,13 +202,17 @@ def contrast_ratio(fg: str, bg: str) -> float:
 def check_design(design: QrDesign) -> list[str]:
     """Avisos (no bloqueantes) sobre legibilidad."""
     warnings: list[str] = []
-    ratio = contrast_ratio(design.fg, design.bg)
+    if design.bg_transparent:
+        warnings.append("Fondo transparente: colócalo sobre una superficie clara")
+    # con fondo transparente el contraste se calcula contra blanco
+    ratio = contrast_ratio(design.fg, "#ffffff" if design.bg_transparent else design.bg)
     if ratio < CONTRAST_MIN:
         warnings.append(
             f"Contraste bajo ({ratio:.1f}:1, mínimo recomendado {CONTRAST_MIN}:1): "
             "el QR puede no leerse."
         )
-    if _luminance(design.fg) > _luminance(design.bg):
+    ref_bg = "#ffffff" if design.bg_transparent else design.bg
+    if _luminance(design.fg) > _luminance(ref_bg):
         warnings.append(
             "Colores invertidos (módulos más claros que el fondo): "
             "muchos lectores no los leen bien."
@@ -303,7 +312,9 @@ def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
     ss = max(1, min(4, MAX_SIZE // size))
     px = size * ss / lay.width  # px por módulo
     w, h = size * ss, round(lay.height * px)
-    img = Image.new("RGB", (w, h), design.bg)
+    transp = design.bg_transparent
+    bg_fill: tuple[int, ...] | str = (*_rgb(design.bg), 0) if transp else design.bg
+    img = Image.new("RGBA" if transp else "RGB", (w, h), bg_fill)
     d = ImageDraw.Draw(img)
 
     if lay.border:
@@ -311,7 +322,7 @@ def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
         d.rounded_rectangle(
             (px, px, w - 1 - px, lay.width * px - 1),
             radius=max(lay.corner - 1, 0) * px,
-            fill=design.bg,
+            fill=bg_fill,  # ImageDraw sobrescribe (no mezcla): con RGBA deja el hueco alfa 0
         )
         if lay.band:
             font = ImageFont.load_default(size=max(8, round(2.6 * px)))
@@ -339,11 +350,16 @@ def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
     if fit and lay.logo_box:
         im, (lx, ly) = fit
         bx0, by0, bx1, by1 = lay.logo_box
-        d.rectangle((bx0 * px, by0 * px, bx1 * px - 1, by1 * px - 1), fill=design.bg)
+        d.rectangle((bx0 * px, by0 * px, bx1 * px - 1, by1 * px - 1), fill=bg_fill)
         tw = max(1, round(im.width * (lay.logo_box[2] - lay.logo_box[0] - 1) / max(im.size) * px))
         th = max(1, round(im.height * (lay.logo_box[2] - lay.logo_box[0] - 1) / max(im.size) * px))
         scaled = im.resize((tw, th), Image.Resampling.LANCZOS)
-        img.paste(scaled, (round(lx * px), round(ly * px)), scaled)
+        if transp:  # componer sobre capa transparente: el alfa del logo se conserva
+            layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+            layer.paste(scaled, (round(lx * px), round(ly * px)))
+            img = Image.alpha_composite(img, layer)
+        else:
+            img.paste(scaled, (round(lx * px), round(ly * px)), scaled)
 
     if ss > 1:
         img = img.resize((size, round(lay.height * size / lay.width)), Image.Resampling.LANCZOS)
@@ -372,6 +388,18 @@ def _module_path(x: float, y: float, style: str) -> str:
     )
 
 
+def _rrect_path(x: float, y: float, w: float, h: float, r: float) -> str:
+    r = min(r, w / 2, h / 2)
+    if r <= 0:
+        return f"M{_f(x)} {_f(y)}h{_f(w)}v{_f(h)}h-{_f(w)}z"
+    return (
+        f"M{_f(x + r)} {_f(y)}h{_f(w - 2 * r)}a{_f(r)} {_f(r)} 0 0 1 {_f(r)} {_f(r)}"
+        f"v{_f(h - 2 * r)}a{_f(r)} {_f(r)} 0 0 1 -{_f(r)} {_f(r)}"
+        f"h-{_f(w - 2 * r)}a{_f(r)} {_f(r)} 0 0 1 -{_f(r)} -{_f(r)}"
+        f"v-{_f(h - 2 * r)}a{_f(r)} {_f(r)} 0 0 1 {_f(r)} -{_f(r)}z"
+    )
+
+
 def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
     """Elementos SVG del QR (marco, módulos, logo) en unidades de módulo, sin `<svg>` envolvente.
 
@@ -380,7 +408,15 @@ def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
     """
     w, h = lay.width, lay.height
     parts: list[str] = []
-    if lay.border:
+    transp = design.bg_transparent
+    if lay.border and transp:
+        # marco con hueco real (evenodd): sin rect de fondo
+        parts.append(
+            f'<path fill="{design.fg}" fill-rule="evenodd" d="'
+            f"{_rrect_path(0, 0, w, h, lay.corner)}"
+            f'{_rrect_path(1, 1, w - 2, w - 1, max(lay.corner - 1, 0))}"/>'
+        )
+    elif lay.border:
         parts.append(
             f'<rect width="{_f(w)}" height="{_f(h)}" rx="{_f(lay.corner)}" fill="{design.fg}"/>'
         )
@@ -388,13 +424,14 @@ def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
             f'<rect x="1" y="1" width="{_f(w - 2)}" height="{_f(w - 1)}" '
             f'rx="{_f(max(lay.corner - 1, 0))}" fill="{design.bg}"/>'
         )
+    if lay.border:
         if lay.band:
             parts.append(
                 f'<text x="{_f(w / 2)}" y="{_f(w + lay.band / 2 - 0.5 + 0.9)}" fill="{design.bg}" '
                 'font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="2.6" '
                 f'text-anchor="middle">{escape(design.label)}</text>'
             )
-    else:
+    elif not transp:
         parts.append(f'<rect width="{_f(w)}" height="{_f(h)}" fill="{design.bg}"/>')
 
     sq: list[str] = []
@@ -417,10 +454,11 @@ def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
         buf = io.BytesIO()
         im.save(buf, format="PNG")
         b64 = base64.b64encode(buf.getvalue()).decode()
-        parts.append(
-            f'<rect x="{_f(bx0)}" y="{_f(by0)}" width="{_f(bx1 - bx0)}" '
-            f'height="{_f(by1 - by0)}" fill="{design.bg}"/>'
-        )
+        if not transp:
+            parts.append(
+                f'<rect x="{_f(bx0)}" y="{_f(by0)}" width="{_f(bx1 - bx0)}" '
+                f'height="{_f(by1 - by0)}" fill="{design.bg}"/>'
+            )
         parts.append(
             f'<image x="{_f(lx)}" y="{_f(ly)}" width="{_f(im.width * scale)}" '
             f'height="{_f(im.height * scale)}" href="data:image/png;base64,{b64}"/>'
@@ -447,10 +485,16 @@ def render_svg(payload: str, design: QrDesign) -> str:
 def render_pdf(payload: str, design: QrDesign, size: int = 1024) -> bytes:
     """PDF de una página con el PNG de alta resolución embebido (no vectorial).
 
+    Formato de impresión: con `bg_transparent` el PDF mantiene fondo blanco.
+
     TODO(T031+): PDF vectorial si se requiere para imprenta.
     """
     _check_size(size)
-    png = render_png(payload, design, size)
+    png = render_png(
+        payload,
+        replace(design, bg_transparent=False, bg="#ffffff") if design.bg_transparent else design,
+        size,
+    )
     with Image.open(io.BytesIO(png)) as im:
         out = io.BytesIO()
         im.convert("RGB").save(out, format="PDF", resolution=max(72.0, size / 4))

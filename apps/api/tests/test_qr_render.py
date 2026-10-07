@@ -3,7 +3,7 @@ import io
 import pypdfium2 as pdfium
 import pytest
 import zxingcpp
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from app.services.qr_render import (
     QrDesign,
@@ -259,3 +259,97 @@ def test_logo_load_does_not_change_max_image_pixels():
     with pytest.raises(QrRenderError):
         QrDesign(logo=b"not an image")
     assert before == Image.MAX_IMAGE_PIXELS
+
+
+# ------------------------------------------------------------------ fondo transparente (T061)
+
+
+def _flat(png: bytes, bg: str) -> Image.Image:
+    im = Image.open(io.BytesIO(png)).convert("RGBA")
+    return Image.alpha_composite(Image.new("RGBA", im.size, bg), im).convert("RGB")
+
+
+@pytest.mark.parametrize("frame", ["none", "label"])
+@pytest.mark.parametrize("style", ["square", "dots"])
+@pytest.mark.parametrize("with_logo", [False, True])
+@pytest.mark.parametrize("bg", ["#ffffff", "#eeeeee"])
+def test_transparent_png_decodes(frame, style, with_logo, bg):
+    d = QrDesign(
+        frame=frame,
+        module_style=style,
+        logo=_logo() if with_logo else None,
+        bg_transparent=True,
+    )
+    png = render_png(URL, d, 600)
+    assert URL in decode(_flat(png, bg))
+
+
+def test_transparent_png_alpha_zero_outside_modules_and_logo():
+    d = QrDesign(bg_transparent=True, margin=4)
+    im = Image.open(io.BytesIO(render_png(URL, d, 512)))
+    assert im.mode == "RGBA"
+    a = im.getchannel("A")
+    assert a.getpixel((0, 0)) == 0 and a.getpixel((511, 511)) == 0  # margen
+    # todo píxel opaco es módulo (oscuro); el resto es alfa 0
+    px = im.load()
+    assert px is not None
+    for y in range(0, 512, 7):
+        for x in range(0, 512, 7):
+            r, g, b, al = px[x, y]
+            assert al == 0 or (r < 128 and g < 128 and b < 128)  # transparente o módulo negro
+    assert any(px[x, y][3] == 255 for y in range(0, 512, 3) for x in range(0, 512, 3))
+
+
+def test_transparent_png_logo_clear_area_is_transparent():
+    logo = Image.new("RGBA", (50, 50), (0, 0, 0, 0))  # logo totalmente transparente
+    ImageDraw.Draw(logo).ellipse((20, 20, 30, 30), fill=(255, 0, 0, 255))
+    buf = io.BytesIO()
+    logo.save(buf, format="PNG")
+    d = QrDesign(bg_transparent=True, logo=buf.getvalue())
+    im = Image.open(io.BytesIO(render_png(URL, d, 512)))
+    c = im.size[0] // 2
+    # el centro es el logo (rojo opaco); su alrededor inmediato (área despejada) es alfa 0
+    assert im.getpixel((c, c))[3] == 255
+    assert im.getpixel((c + 25, c))[3] == 0 or im.getpixel((c - 25, c))[3] == 0
+
+
+def test_transparent_svg_has_no_background_rect():
+    svg = render_svg(URL, QrDesign(bg_transparent=True))
+    assert "<rect" not in svg
+    svg_logo = render_svg(URL, QrDesign(bg_transparent=True, logo=_logo()))
+    assert "<rect" not in svg_logo and "<image" in svg_logo
+    framed = render_svg(URL, QrDesign(bg_transparent=True, frame="rounded"))
+    assert "<rect" not in framed and 'fill-rule="evenodd"' in framed
+    assert "<rect" in render_svg(URL, QrDesign())  # sin transparencia sigue habiendo fondo
+
+
+def test_transparent_svg_decodes_on_white():
+    # el rasterizador de test pinta sobre blanco; sin rect de fondo solo quedan los módulos
+    img = _raster_svg(render_svg(URL, QrDesign(bg_transparent=True)), 600)
+    assert URL in decode(img)
+
+
+def test_transparent_pdf_stays_white():
+    pdf = render_pdf(URL, QrDesign(bg_transparent=True), 512)
+    page = pdfium.PdfDocument(pdf)[0]
+    img = page.render(scale=2).to_pil().convert("RGB")
+    assert img.getpixel((2, 2)) == (255, 255, 255)
+    assert URL in decode(img)
+
+
+def test_transparent_warning_and_contrast_against_white():
+    w = check_design(QrDesign(bg_transparent=True))
+    assert any("Fondo transparente" in x and "superficie clara" in x for x in w)
+    # bg oscuro irrelevante: el contraste se mide contra blanco
+    assert not any(
+        "Contraste bajo" in x for x in check_design(QrDesign(bg="#000000", bg_transparent=True))
+    )
+    assert any(
+        "Contraste bajo" in x for x in check_design(QrDesign(fg="#eeeeee", bg_transparent=True))
+    )
+    assert not any("Fondo transparente" in x for x in check_design(QrDesign()))
+
+
+def test_bg_transparent_must_be_bool():
+    with pytest.raises(QrRenderError):
+        QrDesign(bg_transparent="yes")  # type: ignore[arg-type]

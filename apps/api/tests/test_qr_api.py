@@ -129,6 +129,7 @@ def make(monkeypatch: pytest.MonkeyPatch) -> Iterator[Any]:
             b = Backend(role)
             mock.post(f"{SB}/rest/v1/rpc/my_effective_role").mock(side_effect=b.memberships)
             mock.get(f"{SB}/rest/v1/dynamic_links").mock(side_effect=b.links)
+            mock.get(f"{SB}/rest/v1/nfc_tags").mock(return_value=httpx.Response(200, json=[]))
             mock.route(url__startswith=f"{SB}/rest/v1/qr_designs").mock(side_effect=b.designs)
             mock.route(url__startswith=f"{SB}/storage/v1/object/").mock(side_effect=b.storage)
             return b
@@ -547,3 +548,69 @@ def test_preset_wins_over_logo_path_and_skips_storage(make: Any) -> None:
     b.objects.clear()  # si se intentara leer de Storage → 404 → 502
     r = c.get(d("qr.png"), headers=H)
     assert r.status_code == 200 and decode_png(r.content) == [URL]
+
+
+# ---------------------------------------------------------------- fondo transparente (T061)
+
+
+def _flatten(png: bytes, bg: str) -> Image.Image:
+    im = Image.open(io.BytesIO(png)).convert("RGBA")
+    base = Image.new("RGBA", im.size, bg)
+    return Image.alpha_composite(base, im).convert("RGB")
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"bg": "transparent"}, {"style": {"bg_transparent": True}}],
+)
+def test_transparent_put_get_and_download(make: Any, body: Any) -> None:
+    b = make("editor")
+    c = TestClient(app)
+    j = c.put(d(), headers=H, json={**body, "style": {**body.get("style", {}), **PRESET}}).json()
+    assert j["bg"] == "#ffffff" and j["style"]["bg_transparent"] is True
+    assert j["logo_preset"] == "google"
+    assert any("Fondo transparente" in w for w in j["warnings"])
+    assert b.design and b.design["bg"] == "#ffffff"  # la BD solo ve hex válido
+    png = c.get(d("qr.png?size=512"), headers=H)
+    assert png.status_code == 200 and "Fondo%20transparente" in png.headers["x-qr-warnings"]
+    im = Image.open(io.BytesIO(png.content))
+    assert im.mode == "RGBA" and im.getpixel((0, 0))[3] == 0
+    for bg in ("#ffffff", "#eeeeee"):
+        assert URL in decode(_flatten(png.content, bg))
+    svg = c.get(d("qr.svg"), headers=H).text
+    assert "<rect" not in svg and "<path" in svg
+    pdf = c.get(d("qr.pdf"), headers=H)
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+
+
+def test_transparent_off_by_default_and_removable(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json={"bg": "transparent"})
+    j = c.put(d(), headers=H, json={"bg": "#ffffff"}).json()
+    assert "bg_transparent" not in j["style"]
+    im = Image.open(io.BytesIO(c.get(d("qr.png"), headers=H).content))
+    assert im.mode == "RGB"
+
+
+def test_transparent_template_keeps_own_background(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json={"bg": "transparent"})
+    r = c.get(d("qr.svg?template=sticker"), headers=H)
+    assert r.status_code == 200 and "<rect" in r.text
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"style": {"bg_transparent": "yes"}},
+        {"style": {"bg_transparent": 1}},
+        {"style": {"bg_transparent": None, "otra": 1}},
+        {"bg": "transparent", "style": {"bg_transparent": False}},
+        {"bg": "clear"},
+    ],
+)
+def test_transparent_invalid_422(make: Any, body: Any) -> None:
+    make("editor")
+    assert TestClient(app).put(d(), headers=H, json=body).status_code == 422

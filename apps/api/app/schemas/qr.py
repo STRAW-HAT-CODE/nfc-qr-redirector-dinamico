@@ -3,7 +3,14 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StrictBool,
+    StringConstraints,
+    model_validator,
+)
 
 Hex = Annotated[str, StringConstraints(pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")]
 FrameText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=30)]
@@ -15,6 +22,7 @@ class DesignStyleIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     logo_preset: Literal["google"] | None = None
+    bg_transparent: StrictBool | None = None
 
 
 class DesignIn(BaseModel):
@@ -23,7 +31,8 @@ class DesignIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     fg: Hex = "#000000"
-    bg: Hex = "#ffffff"
+    # "transparent": se guarda bg "#ffffff" + style.bg_transparent (sin tocar la BD).
+    bg: Hex | Literal["transparent"] = "#ffffff"
     ecc_level: Literal["L", "M", "Q", "H"] = "M"
     frame: Literal["none", "simple", "rounded", "label"] = "none"
     module_style: Literal["square", "rounded", "dots"] = "square"
@@ -33,9 +42,19 @@ class DesignIn(BaseModel):
     logo_preset: Literal["google"] | None = None
     # Alias aceptado por compatibilidad con la web: {"style": {"logo_preset": ...}}.
     style: DesignStyleIn | None = None
+    # Derivado de bg == "transparent" o style.bg_transparent (no se acepta como campo suelto).
+    bg_transparent: bool = Field(default=False, exclude=True)
 
     @model_validator(mode="after")
     def _style_preset(self) -> "DesignIn":
+        wants = self.bg == "transparent"
+        if self.style is not None and self.style.bg_transparent is not None:
+            if wants and not self.style.bg_transparent:
+                raise ValueError("bg y style.bg_transparent no coinciden")
+            wants = wants or self.style.bg_transparent
+        if wants:
+            self.bg = "#ffffff"
+        self.bg_transparent = wants
         if self.style is not None and "logo_preset" in self.style.model_fields_set:
             if self.logo_preset is not None and self.logo_preset != self.style.logo_preset:
                 raise ValueError("logo_preset y style.logo_preset no coinciden")
