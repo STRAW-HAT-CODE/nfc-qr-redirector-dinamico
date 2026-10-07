@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import { ErrorState } from "@/components/error-state";
 import { CopyButton } from "@/components/links/copy-button";
+import { DeleteLinkZone } from "@/components/links/delete-link-zone";
 import { DestinationEditor } from "@/components/links/destination-editor";
 import { HistoryList } from "@/components/links/history-list";
 import { LinkEditForm } from "@/components/links/link-edit-form";
@@ -114,6 +115,8 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
             )}
           </CardContent>
         </Card>
+
+        {canArchive ? <DeleteLinkZone linkId={link.id} linkName={link.name} /> : null}
       </div>
     </>
   );

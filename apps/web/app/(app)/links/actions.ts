@@ -115,3 +115,14 @@ export async function setStatusAction(id: string, status: LinkStatus): Promise<A
   revalidatePath("/links");
   return { ok: true };
 }
+
+/** Elimina el enlace de forma definitiva (admin+). No se puede deshacer. */
+export async function deleteLinkPermanentAction(id: string): Promise<ActionState> {
+  try {
+    await api<void>(`/v1/links/${encodeURIComponent(id)}/permanent`, { method: "DELETE" });
+  } catch (e) {
+    return toState(e);
+  }
+  revalidatePath("/links");
+  return { ok: true };
+}
