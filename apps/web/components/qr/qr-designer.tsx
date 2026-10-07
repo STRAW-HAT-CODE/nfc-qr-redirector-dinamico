@@ -19,7 +19,6 @@ import { FramePicker } from "./frame-picker";
 import { LogoUpload } from "./logo-upload";
 import { QrPreview } from "./qr-preview";
 import { QuickDesigns } from "./quick-designs";
-import { TemplatesGallery } from "./templates-gallery";
 
 interface Draft {
   fg: string;
@@ -130,7 +129,6 @@ export function QrDesigner({
             </div>
           </CardContent>
         </Card>
-        <TemplatesGallery linkId={linkId} dirty={dirty} />
       </div>
 
       <Card className="content-start">
