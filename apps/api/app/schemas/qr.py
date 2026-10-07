@@ -3,10 +3,18 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 Hex = Annotated[str, StringConstraints(pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")]
 FrameText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=30)]
+
+
+class DesignStyleIn(BaseModel):
+    """Subconjunto editable de `style` (lista blanca). Contrato de la web: `style.logo_preset`."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    logo_preset: Literal["google"] | None = None
 
 
 class DesignIn(BaseModel):
@@ -23,6 +31,16 @@ class DesignIn(BaseModel):
     frame_text: FrameText | None = None
     # Preset de logo incluido (lista blanca: solo "google"); fuerza ECC H y gana sobre logo_path.
     logo_preset: Literal["google"] | None = None
+    # Alias aceptado por compatibilidad con la web: {"style": {"logo_preset": ...}}.
+    style: DesignStyleIn | None = None
+
+    @model_validator(mode="after")
+    def _style_preset(self) -> "DesignIn":
+        if self.style is not None and "logo_preset" in self.style.model_fields_set:
+            if self.logo_preset is not None and self.logo_preset != self.style.logo_preset:
+                raise ValueError("logo_preset y style.logo_preset no coinciden")
+            self.logo_preset = self.style.logo_preset
+        return self
 
 
 class DesignOut(BaseModel):
