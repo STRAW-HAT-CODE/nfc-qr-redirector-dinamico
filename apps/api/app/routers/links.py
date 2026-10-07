@@ -3,11 +3,12 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 
+from app.auth import CurrentUser
 from app.core.config import Settings, get_settings
 from app.db import UserDB
-from app.deps import Role, get_db, get_org_id, require_role
+from app.deps import Role, get_current_user, get_db, get_org_id, require_role
 from app.schemas.links import (
     DEFAULT_LIMIT,
     DestinationUpdate,
@@ -28,8 +29,9 @@ def get_service(
     db: Annotated[UserDB, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     org_id: Annotated[UUID, Depends(get_org_id)],
+    user: Annotated[CurrentUser, Depends(get_current_user)],
 ) -> LinksService:
-    return LinksService(db, settings, org_id)
+    return LinksService(db, settings, org_id, user.raw_token)
 
 
 Svc = Annotated[LinksService, Depends(get_service)]
@@ -74,6 +76,17 @@ async def update_link(link_id: UUID, body: LinkUpdate, svc: Svc) -> LinkOut:
 async def archive_link(link_id: UUID, svc: Svc) -> LinkOut:
     """Archiva (status=archived); no borra la fila."""
     return await svc.archive(link_id)
+
+
+@router.delete(
+    "/{link_id}/permanent",
+    status_code=204,
+    dependencies=[Depends(require_role(Role.admin))],
+)
+async def delete_link_permanently(link_id: UUID, svc: Svc) -> Response:
+    """Borra el enlace y, en cascada, diseño, NFC, historial y escaneos. El slug no se reutiliza."""
+    await svc.delete_permanently(link_id)
+    return Response(status_code=204)
 
 
 @router.patch(

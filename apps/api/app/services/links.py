@@ -1,5 +1,6 @@
 """Lógica de enlaces: validación de URLs, acceso a BD con el JWT del usuario y mapeo de errores."""
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -20,7 +21,11 @@ from app.schemas.links import (
 from app.services.limits import plan_limit_error
 from app.services.url_policy import UrlPolicyError, validate_destination
 
+log = logging.getLogger(__name__)
+
 LINKS = "dynamic_links"
+DESIGNS = "qr_designs"
+LOGO_BUCKET = "logos"
 HISTORY = "link_destination_history"
 
 
@@ -45,8 +50,9 @@ def _not_found() -> ApiError:
 
 
 class LinksService:
-    def __init__(self, db: UserDB, settings: Settings, org_id: UUID) -> None:
+    def __init__(self, db: UserDB, settings: Settings, org_id: UUID, token: str = "") -> None:
         self._db = db
+        self._token = token
         self._settings = settings
         self._org_id = org_id
 
@@ -155,6 +161,44 @@ class LinksService:
 
     async def archive(self, link_id: UUID) -> LinkOut:
         return await self._patch(link_id, {"status": LinkStatus.archived.value})
+
+    async def _delete_logo(self, path: str) -> None:
+        """Borra el logo del bucket con el JWT del usuario; un fallo se registra y se ignora."""
+        try:
+            async with httpx.AsyncClient(
+                base_url=f"{self._settings.supabase_url.rstrip('/')}/storage/v1",
+                headers={
+                    "apikey": self._settings.supabase_anon_key,
+                    "Authorization": f"Bearer {self._token}",
+                },
+                timeout=15.0,
+            ) as client:
+                resp = await client.delete(f"/object/{LOGO_BUCKET}/{path}")
+            if resp.status_code >= 400:
+                log.warning("No se pudo borrar el logo (HTTP %s)", resp.status_code)
+        except httpx.HTTPError:
+            log.warning("No se pudo borrar el logo (error de red)")
+
+    async def delete_permanently(self, link_id: UUID) -> None:
+        """Borrado definitivo: logo (best-effort) y fila; las FK en cascada borran el resto."""
+        await self._fetch(link_id)  # 404 si no existe / otra org
+        designs = await self._run(
+            self._db.select(
+                DESIGNS,
+                {
+                    "select": "logo_path",
+                    "link_id": f"eq.{link_id}",
+                    "org_id": f"eq.{self._org_id}",
+                },
+            )
+        )
+        logo_path = designs[0].get("logo_path") if designs else None
+        if logo_path:
+            await self._delete_logo(logo_path)
+        deleted = await self._run(self._db.delete(LINKS, self._scope(link_id)))
+        if not deleted:
+            # La RLS no lo permite (o ya no existe): no se revela más.
+            raise ApiError(403, "insufficient_role", "No tienes permiso para esta operación")
 
     async def set_destination(self, link_id: UUID, url: str) -> LinkOut:
         return await self._patch(link_id, {"destination_url": self._url(url)})
