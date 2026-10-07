@@ -9,6 +9,8 @@ export interface PreviewParams {
   data: string;
   fg: string;
   bg: string;
+  /** Fondo transparente: se muestra sobre cuadrícula. */
+  transparent?: boolean;
   ecc: EccLevel;
   frame: QrFrame;
   frameText: string;
@@ -17,6 +19,15 @@ export interface PreviewParams {
   hasLogo: boolean;
   logoUrl?: string | null;
 }
+
+/** Cuadrícula (checkerboard) para que se aprecie la transparencia. */
+const CHECKER: React.CSSProperties = {
+  backgroundColor: "#ffffff",
+  backgroundImage:
+    "linear-gradient(45deg,#d4d4d8 25%,transparent 25%,transparent 75%,#d4d4d8 75%),linear-gradient(45deg,#d4d4d8 25%,transparent 25%,transparent 75%,#d4d4d8 75%)",
+  backgroundSize: "16px 16px",
+  backgroundPosition: "0 0,8px 8px",
+};
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -67,8 +78,9 @@ export function QrPreview(props: PreviewParams) {
       role="img"
       aria-label={`Vista previa del QR${p.frame === "label" ? ` con marco «${text}»` : ""}`}
       className="h-auto w-full max-w-sm rounded-lg shadow-sm ring-1 ring-border"
+      style={p.transparent ? CHECKER : undefined}
     >
-      <rect width={W} height={H} fill={p.bg} rx={p.frame === "rounded" ? 2 : 0} />
+      {!p.transparent && <rect width={W} height={H} fill={p.bg} rx={p.frame === "rounded" ? 2 : 0} />}
       {p.frame !== "none" && (
         <rect
           x={0.4} y={0.4} width={W - 0.8} height={H - 0.8}
@@ -83,7 +95,7 @@ export function QrPreview(props: PreviewParams) {
       </g>
       {p.hasLogo && (
         <g transform={`translate(${pad + side / 2 - logo / 2} ${pad + side / 2 - logo / 2})`}>
-          <rect width={logo} height={logo} fill={p.bg} rx={logo * 0.12} />
+          {!p.transparent && <rect width={logo} height={logo} fill={p.bg} rx={logo * 0.12} />}
           {p.logoUrl ? (
             <image href={p.logoUrl} x={logo * 0.08} y={logo * 0.08} width={logo * 0.84} height={logo * 0.84} preserveAspectRatio="xMidYMid meet" />
           ) : (

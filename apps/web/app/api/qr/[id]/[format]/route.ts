@@ -4,7 +4,7 @@ import { apiRaw } from "@/lib/api";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FORMATS = new Set(["png", "svg", "pdf"]);
-const TEMPLATES = new Set(["none"]); // T033 añadirá sticker/display/poster
+const TEMPLATES = new Set(["none", "sticker", "display", "poster", "google_review"]);
 
 const bad = (message: string) => Response.json({ error: { code: "bad_request", message } }, { status: 400 });
 
