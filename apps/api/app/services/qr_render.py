@@ -24,8 +24,9 @@ from urllib.parse import quote, urlsplit
 from xml.sax.saxutils import escape
 
 import segno
-from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
+from PIL import Image, ImageDraw, UnidentifiedImageError
 
+from app.services.qr_fonts import SVG_FAMILY, load_font
 from app.services.slug import is_valid_slug
 
 Channel = Literal["q", "n"]
@@ -325,7 +326,7 @@ def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
             fill=bg_fill,  # ImageDraw sobrescribe (no mezcla): con RGBA deja el hueco alfa 0
         )
         if lay.band:
-            font = ImageFont.load_default(size=max(8, round(2.6 * px)))
+            font = load_font(max(8, round(2.6 * px)))
             d.text(
                 (w / 2, (lay.width + lay.band / 2 - 0.5) * px),
                 design.label,
@@ -428,7 +429,7 @@ def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
         if lay.band:
             parts.append(
                 f'<text x="{_f(w / 2)}" y="{_f(w + lay.band / 2 - 0.5 + 0.9)}" fill="{design.bg}" '
-                'font-family="Helvetica, Arial, sans-serif" font-weight="bold" font-size="2.6" '
+                f'font-family="{SVG_FAMILY}" font-weight="bold" font-size="2.6" '
                 f'text-anchor="middle">{escape(design.label)}</text>'
             )
     elif not transp:
