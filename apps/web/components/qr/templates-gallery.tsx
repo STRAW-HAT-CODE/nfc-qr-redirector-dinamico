@@ -1,30 +1,43 @@
-import { FileText, Monitor, Star, Sticker } from "lucide-react";
+import { Download, FileText, Monitor, Star, Sticker } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
-/** Plantillas de impresión (T033). Hasta que la API las exponga se muestran como "próximamente". */
+import { qrUrl } from "./download-menu";
+
+/** Plantillas de impresión (T033): la API las renderiza en SVG, PDF y PNG. */
 export const TEMPLATES = [
-  { id: "sticker", name: "Sticker", icon: Sticker },
-  { id: "display", name: "Display", icon: Monitor },
-  { id: "poster", name: "Póster A4", icon: FileText },
-  { id: "google_review", name: "Reseña en Google", icon: Star },
+  { id: "sticker", name: "Sticker", icon: Sticker, hint: "Pegatina con marco redondeado" },
+  { id: "display", name: "Display", icon: Monitor, hint: "Para mostrador o tótem" },
+  { id: "poster", name: "Póster A4", icon: FileText, hint: "Hoja completa para imprimir" },
+  { id: "google_review", name: "Reseña en Google", icon: Star, hint: "Pide reseñas en tu perfil" },
 ] as const;
 
-export function TemplatesGallery() {
+export function TemplatesGallery({ linkId, dirty }: { linkId: string; dirty?: boolean }) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Plantillas de impresión</CardTitle>
-        <CardDescription>Sticker / Display / Póster A4 / Reseña en Google: próximamente.</CardDescription>
+        <CardDescription>
+          Descarga el QR ya maquetado para imprimir. {dirty ? "Guarda el diseño para incluir los cambios." : "Usa el diseño guardado."}
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {TEMPLATES.map(({ id, name, icon: Icon }) => (
-            <li key={id} className="flex flex-col items-center gap-2 rounded-lg border border-dashed p-3 text-center opacity-70">
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {TEMPLATES.map(({ id, name, icon: Icon, hint }) => (
+            <li key={id} className="flex flex-col items-center gap-2 rounded-lg border p-3 text-center">
               <Icon className="size-6 text-muted-foreground" aria-hidden="true" />
               <span className="text-sm font-medium">{name}</span>
-              <Badge variant="secondary">Próximamente</Badge>
+              <span className="text-xs text-muted-foreground">{hint}</span>
+              <div className="flex gap-1.5">
+                {(["svg", "pdf", "png"] as const).map((f) => (
+                  <Button key={f} asChild variant="outline" size="sm">
+                    <a href={qrUrl(linkId, f, { template: id })} download aria-label={`Descargar ${name} en ${f.toUpperCase()}`}>
+                      <Download aria-hidden="true" /> {f.toUpperCase()}
+                    </a>
+                  </Button>
+                ))}
+              </div>
             </li>
           ))}
         </ul>

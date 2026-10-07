@@ -29,15 +29,23 @@ interface Draft {
   frame_text: string;
   module_style: ModuleStyle;
   margin: number;
+  bg_transparent: boolean;
 }
 
 const toDraft = (d: QrDesign): Draft => ({
   fg: d.fg, bg: d.bg, ecc_level: d.has_logo || d.style?.logo_preset ? "H" : d.ecc_level, frame: d.frame,
   frame_text: d.frame_text ?? "", module_style: d.module_style, margin: d.margin,
+  bg_transparent: !!d.style?.bg_transparent,
 });
 
 const PRESET_GOOGLE = { fg: "#000000", bg: "#FFFFFF", frame: "none", module_style: "square" } as const;
 const GOOGLE_G = "/presets/google-g.svg";
+
+const withoutFlag = (d: Draft): Omit<Draft, "bg_transparent"> => {
+  const { bg_transparent, ...rest } = d;
+  void bg_transparent;
+  return rest;
+};
 
 const ECC: Record<EccLevel, string> = { L: "L · 7 %", M: "M · 15 %", Q: "Q · 25 %", H: "H · 30 %" };
 const STYLES: Record<ModuleStyle, string> = { square: "Cuadrados", rounded: "Redondeados", dots: "Puntos" };
@@ -64,8 +72,8 @@ export function QrDesigner({
     setError(undefined);
     startPreset(async () => {
       const input = on
-        ? { ...PRESET_GOOGLE, ecc_level: "H" as const, margin: saved.margin, frame_text: null, style: { logo_preset: "google" as const } }
-        : { ...toDraft(saved), frame_text: saved.frame === "label" ? saved.frame_text : null, style: { logo_preset: null } };
+        ? { ...PRESET_GOOGLE, ecc_level: "H" as const, margin: saved.margin, frame_text: null, style: { logo_preset: "google" as const, bg_transparent: draft.bg_transparent } }
+        : { ...withoutFlag(toDraft(saved)), frame_text: saved.frame === "label" ? saved.frame_text : null, style: { logo_preset: null, bg_transparent: !!saved.style?.bg_transparent } };
       const res = await saveDesignAction(linkId, input);
       if (res.ok) {
         setSaved(res.design);
@@ -79,8 +87,8 @@ export function QrDesigner({
     setError(undefined);
     start(async () => {
       const res = await saveDesignAction(linkId, {
-        ...draft, frame_text: draft.frame === "label" ? draft.frame_text : null,
-        ...(preset ? { style: { logo_preset: preset } } : {}),
+        ...withoutFlag(draft), frame_text: draft.frame === "label" ? draft.frame_text : null,
+        style: { logo_preset: preset, bg_transparent: draft.bg_transparent },
       });
       if (res.ok) {
         setSaved(res.design);
@@ -109,7 +117,7 @@ export function QrDesigner({
           </CardHeader>
           <CardContent className="grid justify-items-center gap-4">
             <QrPreview
-              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} ecc={saved.has_logo || preset ? "H" : draft.ecc_level}
+              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} transparent={draft.bg_transparent} ecc={saved.has_logo || preset ? "H" : draft.ecc_level}
               frame={draft.frame} frameText={draft.frame_text} moduleStyle={draft.module_style}
               margin={draft.margin} hasLogo={saved.has_logo || !!preset} logoUrl={preset ? GOOGLE_G : logoUrl}
             />
@@ -122,7 +130,7 @@ export function QrDesigner({
             </div>
           </CardContent>
         </Card>
-        <TemplatesGallery />
+        <TemplatesGallery linkId={linkId} dirty={dirty} />
       </div>
 
       <Card className="content-start">
@@ -137,12 +145,25 @@ export function QrDesigner({
           ) : null}
           <div className="grid grid-cols-2 gap-3">
             <ColorPicker label="Color del QR" value={draft.fg} onChange={(v) => set("fg", v)} disabled={locked} />
-            <ColorPicker label="Fondo" value={draft.bg} onChange={(v) => set("bg", v)} disabled={locked} />
+            <ColorPicker label="Fondo" value={draft.bg} onChange={(v) => set("bg", v)} disabled={locked || draft.bg_transparent} />
           </div>
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox" role="switch" checked={draft.bg_transparent} disabled={locked}
+              onChange={(e) => set("bg_transparent", e.target.checked)}
+              aria-describedby="bg-transparent-help" className="mt-1 size-4 accent-primary"
+            />
+            <span className="grid gap-0.5">
+              <span className="font-medium">Fondo transparente</span>
+              <span id="bg-transparent-help" className="text-xs text-muted-foreground">
+                PNG y SVG sin fondo, para colocar sobre tus diseños (p. ej. Canva). El PDF mantiene fondo blanco.
+              </span>
+            </span>
+          </label>
           {canEdit ? (
             <QuickDesigns active={!!preset} onApply={() => applyPreset(true)} onRemove={() => applyPreset(false)} disabled={pending} busy={presetBusy} />
           ) : null}
-          <ContrastWarning fg={draft.fg} bg={draft.bg} serverWarnings={saved.warnings} />
+          <ContrastWarning fg={draft.fg} bg={draft.bg} transparent={draft.bg_transparent} serverWarnings={saved.warnings} />
 
           <div className="grid gap-1.5">
             <Label htmlFor="module-style">Estilo de módulos</Label>

@@ -170,6 +170,8 @@ export type ModuleStyle = "square" | "rounded" | "dots";
 export type LogoPreset = "google";
 export interface QrDesignStyle {
   logo_preset?: LogoPreset | null;
+  /** Fondo transparente (T061): bg se guarda en #ffffff y este flag lo marca. */
+  bg_transparent?: boolean;
 }
 
 export interface QrDesign {

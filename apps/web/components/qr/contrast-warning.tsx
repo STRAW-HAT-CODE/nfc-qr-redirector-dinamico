@@ -4,8 +4,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { contrastWarnings } from "@/lib/qr-contrast";
 
 /** Avisos de la API (X-QR-Warnings / warnings del diseño) + cálculo local de contraste. */
-export function ContrastWarning({ fg, bg, serverWarnings }: { fg: string; bg: string; serverWarnings: string[] }) {
-  const all = [...new Set([...contrastWarnings(fg, bg), ...serverWarnings])];
+export function ContrastWarning({ fg, bg, transparent, serverWarnings }: { fg: string; bg: string; transparent?: boolean; serverWarnings: string[] }) {
+  const all = [...new Set([
+    ...contrastWarnings(fg, transparent ? "#ffffff" : bg),
+    ...(transparent ? ["Fondo transparente: colócalo sobre una superficie clara"] : []),
+    ...serverWarnings,
+  ])];
   if (!all.length) return null;
   return (
     <Alert>
