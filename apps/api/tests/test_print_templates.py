@@ -31,6 +31,7 @@ from app.services.print_templates import (
     text_width,
 )
 from app.services.qr_render import QrDesign, QrRenderError
+from tests.test_qr_api import SQUARE_ROW
 from tests.test_qr_render import _logo, decode, decode_png
 
 BASE = "https://go.example.com"
@@ -238,8 +239,9 @@ def api(request: pytest.FixtureRequest) -> Iterator[dict[str, Any]]:
                 200, json=[{"id": LINK, "slug": SLUG, "name": state["name"]}]
             )
         )
+        # The test rasterizer only draws square modules: pin a saved square design.
         mock.route(url__startswith=f"{SB}/rest/v1/qr_designs").mock(
-            return_value=httpx.Response(200, json=[])
+            return_value=httpx.Response(200, json=[SQUARE_ROW])
         )
         mock.route(url__startswith=f"{SB}/rest/v1/nfc_tags").mock(side_effect=nfc)
         yield state
