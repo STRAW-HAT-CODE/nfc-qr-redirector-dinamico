@@ -28,6 +28,16 @@ BASE = "https://go.example.com"
 URL = f"{BASE}/r/{SLUG}?c=q"
 H = {"X-Org-Id": ORG}
 RANK = {"viewer": 1, "editor": 2, "admin": 3, "owner": 4}
+# Saved classic design (square modules, white background, no logo) for tests that check
+# rendering details rather than the default design.
+SQUARE_ROW: dict[str, Any] = {
+    "fg": "#000000",
+    "bg": "#ffffff",
+    "ecc_level": "M",
+    "frame": "none",
+    "logo_path": None,
+    "style": {"module_style": "square", "margin": 4},
+}
 
 
 class Backend:
@@ -194,8 +204,23 @@ def test_unauthenticated(make: Any) -> None:
 def test_get_default_design(make: Any) -> None:
     make("viewer")
     j = TestClient(app).get(d(), headers=H).json()
-    assert j["is_default"] is True and j["fg"] == "#000000" and j["ecc_level"] == "M"
-    assert j["has_logo"] is False
+    # Default without a saved design: Google logo, dots, square finders, transparent background.
+    assert j["is_default"] is True and j["fg"] == "#000000" and j["ecc_level"] == "H"
+    assert j["has_logo"] is False and j["logo_preset"] == "google"
+    assert j["module_style"] == "dots" and j["margin"] == 4 and j["frame"] == "none"
+    assert j["style"]["bg_transparent"] is True and j["style"]["logo_preset"] == "google"
+
+
+def test_default_design_download_is_transparent_with_logo(make: Any) -> None:
+    make("viewer")
+    r = TestClient(app).get(f"{d()[: -len('/design')]}/qr.png?size=512", headers=H)
+    assert r.status_code == 200, r.text
+    im = Image.open(io.BytesIO(r.content))
+    assert im.mode == "RGBA" and im.size == (512, 512)
+    assert im.getpixel((0, 0))[3] == 0  # transparent corner
+    flat = Image.new("RGB", im.size, "white")
+    flat.paste(im, (0, 0), im)
+    assert len(decode(flat)) == 1  # still scannable with the logo, printed on white
 
 
 def test_put_upsert_and_get(make: Any) -> None:
@@ -397,7 +422,7 @@ def test_download_ignores_foreign_logo_path(make: Any) -> None:
 
 
 def test_download_png(make: Any) -> None:
-    make("viewer")
+    make("viewer").design = dict(SQUARE_ROW)
     r = TestClient(app).get(d("qr.png?size=600"), headers=H)
     assert r.status_code == 200 and r.headers["content-type"] == "image/png"
     assert r.headers["content-disposition"] == f'attachment; filename="{SLUG}-qr.png"'

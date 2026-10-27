@@ -17,7 +17,7 @@ from app.main import app
 from app.services.print_templates import SPECS, render_template
 from app.services.qr_render import MAX_LOGO_BYTES, QrDesign, render_pdf, render_png, render_svg
 from tests.test_print_templates import raster_svg
-from tests.test_qr_api import URL, H, d, make, png_bytes  # noqa: F401  (make = fixture)
+from tests.test_qr_api import SQUARE_ROW, URL, H, d, make, png_bytes  # noqa: F401  (make = fixture)
 from tests.test_qr_render import _logo, _raster_svg, decode, decode_png
 
 FRAMES = ["none", "simple", "rounded", "label"]
@@ -84,7 +84,7 @@ def test_api_size_out_of_range_is_422_for_every_format(make: Any, fmt: str, size
 @pytest.mark.parametrize("fmt", ["png", "svg", "pdf"])
 @pytest.mark.parametrize("size", [128, 4096])
 def test_api_size_boundaries_are_accepted_for_every_format(make: Any, fmt: str, size: int) -> None:  # noqa: F811
-    make("viewer")
+    make("viewer").design = dict(SQUARE_ROW)  # 128 px only scans with plain square modules
     r = TestClient(app).get(d(f"qr.{fmt}?size={size}"), headers=H)
     assert r.status_code == 200, (fmt, size, r.text[:100])
     if fmt == "png":

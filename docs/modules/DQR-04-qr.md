@@ -13,6 +13,7 @@ Generación con segno + Pillow (colores, logo, marco, ECC), descargas PNG/SVG/PD
 ## Criterios de aceptación
 - El QR codifica `PUBLIC_REDIRECT_BASE_URL/r/{slug}?c=q`.
 - Con logo se usa ECC H; contraste bajo se avisa.
+- Diseño por defecto (enlace sin diseño guardado, DQR-T064): logo de Google, módulos en puntos, ojos cuadrados, fondo transparente, margen 4 y ECC H.
 - Todo QR generado se decodifica a la URL esperada (test).
 - 3 plantillas: sticker, display de mostrador, póster A4; export listo para importar en Canva.
 

@@ -43,6 +43,17 @@ BUCKET = "logos"
 LOGO_MAX_SIDE = 1024  # el logo ocupa ≤ 20 % del QR; más resolución no aporta
 _LOGO_PATH_RE = re.compile(r"^[0-9a-f-]{36}/[A-Za-z0-9_-][A-Za-z0-9._-]{0,127}\.png$")
 
+# Diseño de un enlace sin fila en qr_designs (DQR-T064): logo de Google, puntos, ojos cuadrados
+# y fondo transparente. Solo afecta a enlaces sin diseño guardado.
+DEFAULT_ROW: dict[str, Any] = {
+    "fg": "#000000",
+    "bg": "#ffffff",
+    "ecc_level": "H",
+    "frame": "none",
+    "logo_path": None,
+    "style": {"margin": 4, "logo_preset": "google", "module_style": "dots", "bg_transparent": True},
+}
+
 MEDIA = {
     "png": "image/png",
     "svg": "image/svg+xml",
@@ -204,7 +215,7 @@ class QrDesignService:
     def _to_design(row: dict[str, Any] | None, logo: bytes | None = None) -> QrDesign:
         """Fila → QrDesign. `style` pasa por lista blanca; valores inválidos → defaults."""
         if row is None:
-            return QrDesign()
+            row = DEFAULT_ROW
         raw_style = row.get("style")
         style: dict[str, Any] = raw_style if isinstance(raw_style, dict) else {}
         base: dict[str, Any] = {
@@ -229,8 +240,10 @@ class QrDesignService:
         return QrDesign(**base, **extra, logo=logo)
 
     def _out(self, link_id: UUID, row: dict[str, Any] | None) -> DesignOut:
+        is_default = row is None
+        row = DEFAULT_ROW if row is None else row
         d = self._to_design(row)
-        has_logo = bool(row and row.get("logo_path"))
+        has_logo = bool(row.get("logo_path"))
         preset = _row_preset(row)
         warnings = check_design(d)
         return DesignOut(
@@ -244,9 +257,9 @@ class QrDesignService:
             frame_text=d.frame_text,
             has_logo=has_logo,
             logo_preset=preset,
-            style=(row.get("style") if row and isinstance(row.get("style"), dict) else {}),
-            is_default=row is None,
-            updated_at=row.get("updated_at") if row else None,
+            style=(row.get("style") if isinstance(row.get("style"), dict) else {}),
+            is_default=is_default,
+            updated_at=row.get("updated_at"),
             warnings=warnings,
         )
 
@@ -344,7 +357,7 @@ class QrDesignService:
         nfc = await self._has_nfc(link_id) if template != "none" else False
         row = await self._row(link_id)
         logo = None
-        preset = "google" if template == "google_review" else _row_preset(row)
+        preset = "google" if template == "google_review" else _row_preset(row or DEFAULT_ROW)
         if preset is None and row and row.get("logo_path"):  # el preset evita tocar Storage
             logo = await self._fetch_logo(str(row["logo_path"]))
         try:
