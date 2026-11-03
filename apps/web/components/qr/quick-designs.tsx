@@ -30,8 +30,8 @@ export function QuickDesigns({
               {busy ? <Loader2 className="animate-spin" /> : <Check />} Quitar
             </Button>
           ) : (
-            <Button size="sm" onClick={onApply} disabled={disabled || busy}>
-              {busy ? <Loader2 className="animate-spin" /> : null} Aplicar
+            <Button variant="outline" size="sm" onClick={onApply} disabled={disabled || busy}>
+              {busy ? <Loader2 className="animate-spin" /> : null} Usar Google
             </Button>
           )}
         </div>

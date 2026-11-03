@@ -345,6 +345,32 @@ def test_logo_too_big_and_pixel_bomb(make: Any) -> None:
     assert r.status_code == 422 and not b.objects
 
 
+def test_logo_upload_clears_preset(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json=PRESET)
+    assert c.get(d(), headers=H).json()["logo_preset"] == "google"
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    j = c.get(d(), headers=H).json()
+    assert j["logo_preset"] is None and j["has_logo"] is True
+
+
+def test_logo_upload_then_delete_leaves_no_logo_nor_preset(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json=PRESET)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    j = c.get(d(), headers=H).json()
+    assert j["has_logo"] is True and j["logo_preset"] is None
+    assert "logo_preset" not in j["style"]
+    r = c.delete(d("design/logo"), headers=H)
+    assert r.status_code == 200
+    for j in (r.json(), c.get(d(), headers=H).json()):
+        assert j["has_logo"] is False and j["logo_preset"] is None
+        assert j["image_mode"] == "none" and j["style"]["image_mode"] == "none"
+        assert "logo_preset" not in j["style"]
+
+
 def test_logo_orphan_removed_if_db_fails(make: Any) -> None:
     b = make("editor")
     b.fail_db_write = True
@@ -637,5 +663,156 @@ def test_transparent_template_keeps_own_background(make: Any) -> None:
     ],
 )
 def test_transparent_invalid_422(make: Any, body: Any) -> None:
+    make("editor")
+    assert TestClient(app).put(d(), headers=H, json=body).status_code == 422
+
+
+# ---------------------------------------------------------------- modo imagen (T065)
+
+
+def test_image_mode_default_none(make: Any) -> None:
+    make("viewer")
+    j = TestClient(app).get(d(), headers=H).json()
+    assert j["image_mode"] == "none" and j["style"]["image_mode"] == "none"
+
+
+def test_image_mode_put_get_and_downloads(make: Any) -> None:
+    b = make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    j = c.put(d(), headers=H, json={"style": {"image_mode": "halftone"}}).json()
+    assert j["image_mode"] == "halftone" and j["style"]["image_mode"] == "halftone"
+    assert j["ecc_level"] == "H" and b.design and b.design["ecc_level"] == "H"
+    assert any("Modo imagen" in w for w in j["warnings"])
+    assert decode_png(c.get(d("qr.png?size=600"), headers=H).content) == [URL]
+    svg = c.get(d("qr.svg"), headers=H).text
+    assert "<image" in svg and "data:image/png;base64," in svg
+    pdf = c.get(d("qr.pdf?size=800"), headers=H).content
+    assert decode(pdfium.PdfDocument(pdf)[0].render(scale=3).to_pil()) == [URL]
+
+
+def test_image_mode_accepts_exact_web_payload(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    body = {
+        "fg": "#000000",
+        "bg": "#ffffff",
+        "ecc_level": "H",
+        "frame": "none",
+        "module_style": "dots",
+        "margin": 4,
+        "frame_text": None,
+        "style": {
+            "logo_preset": None,
+            "bg_transparent": False,
+            "image_mode": "halftone",
+            "image_intensity": 0.8,
+            "image_contrast": 1.0,
+        },
+    }
+    r = c.put(d(), headers=H, json=body)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["image_mode"] == "halftone" and j["style"]["image_intensity"] == 0.8
+    assert decode_png(c.get(d("qr.png?size=600"), headers=H).content) == [URL]
+
+
+def test_image_mode_persists_if_old_client_omits_it(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    c.put(d(), headers=H, json={"style": {"image_mode": "tint"}})
+    j = c.put(d(), headers=H, json={"fg": "#112233"}).json()
+    assert j["image_mode"] == "tint" and j["style"]["image_mode"] == "tint"
+
+
+def test_image_mode_clears_logo_preset(make: Any) -> None:
+    b = make("editor")
+    j = (
+        TestClient(app)
+        .put(d(), headers=H, json={"logo_preset": "google", "style": {"image_mode": "tint"}})
+        .json()
+    )
+    assert j["logo_preset"] is None and j["image_mode"] == "tint" and j["ecc_level"] == "H"
+    assert "logo_preset" not in j["style"]
+    assert b.design and b.design["logo_path"] is None
+
+
+def test_image_mode_reports_ecc_h_from_stored_row(make: Any) -> None:
+    b = make("viewer")
+    b.design = {
+        "link_id": LINK,
+        "fg": "#000000",
+        "bg": "#ffffff",
+        "ecc_level": "M",
+        "frame": "none",
+        "logo_path": None,
+        "style": {"module_style": "square", "margin": 4, "image_mode": "halftone"},
+    }
+    assert TestClient(app).get(d(), headers=H).json()["ecc_level"] == "H"
+
+
+def test_image_mode_wins_over_stale_preset(make: Any) -> None:
+    b = make("viewer")
+    path = f"{ORG}/{LINK}-stale.png"
+    b.design = {
+        "link_id": LINK,
+        "fg": "#000000",
+        "bg": "#ffffff",
+        "ecc_level": "H",
+        "frame": "none",
+        "logo_path": path,
+        "style": {
+            "module_style": "square",
+            "margin": 4,
+            "logo_preset": "google",
+            "image_mode": "halftone",
+        },
+    }
+    b.objects[path] = png_bytes()
+    r = TestClient(app).get(d("qr.png?size=600"), headers=H)
+    assert r.status_code == 200
+    img = Image.open(io.BytesIO(r.content)).convert("RGB")
+    assert decode(img) == [URL]
+    # La imagen roja se usa como relleno; un render limpio solo tendría negro/blanco.
+    assert any(
+        img.getpixel((x, y))[0] > 150 and img.getpixel((x, y))[1] < 200
+        for x in range(0, 600, 7)
+        for y in range(0, 600, 7)
+    )
+
+
+def test_delete_logo_resets_image_mode(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    c.put(d(), headers=H, json={"style": {"image_mode": "photo"}})
+    r = c.delete(d("design/logo"), headers=H)
+    assert r.status_code == 200 and r.json()["image_mode"] == "none"
+    assert c.get(d(), headers=H).json()["image_mode"] == "none"
+
+
+def test_image_mode_template_uses_center_logo(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    c.put(d(), headers=H, json={"style": {"image_mode": "halftone"}})
+    r = c.get(d("qr.svg?template=sticker"), headers=H)
+    assert r.status_code == 200 and "<image" in r.text
+    assert "descarga%20QR" in r.headers["x-qr-warnings"]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"style": {"image_mode": "evil"}},
+        {"style": {"image_intensity": 2}},
+        {"style": {"image_intensity": -1}},
+        {"style": {"image_contrast": 0.1}},
+        {"style": {"image_contrast": 3}},
+    ],
+)
+def test_image_mode_invalid_422(make: Any, body: Any) -> None:
     make("editor")
     assert TestClient(app).put(d(), headers=H, json=body).status_code == 422

@@ -14,6 +14,7 @@ from pydantic import (
 
 Hex = Annotated[str, StringConstraints(pattern=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")]
 FrameText = Annotated[str, StringConstraints(strip_whitespace=True, max_length=30)]
+ImageMode = Literal["none", "tint", "silhouette", "halftone", "photo"]
 
 
 class DesignStyleIn(BaseModel):
@@ -23,6 +24,10 @@ class DesignStyleIn(BaseModel):
 
     logo_preset: Literal["google"] | None = None
     bg_transparent: StrictBool | None = None
+    # Imagen artística (DQR-T065): reutiliza `logo_path` como imagen de fondo.
+    image_mode: ImageMode | None = None
+    image_intensity: Annotated[float, Field(ge=0.0, le=1.0)] | None = None
+    image_contrast: Annotated[float, Field(ge=0.5, le=2.0)] | None = None
 
 
 class DesignIn(BaseModel):
@@ -73,6 +78,7 @@ class DesignOut(BaseModel):
     frame_text: str | None
     has_logo: bool
     logo_preset: str | None = None
+    image_mode: str = "none"
     style: dict[str, Any] = Field(default_factory=dict)
     is_default: bool
     updated_at: datetime | None
