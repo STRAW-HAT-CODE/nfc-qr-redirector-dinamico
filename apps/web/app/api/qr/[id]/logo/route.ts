@@ -8,7 +8,20 @@ type Ctx = { params: Promise<{ id: string }> };
 const passthrough = (res: Response) =>
   new Response(res.body, { status: res.status, headers: { "Content-Type": res.headers.get("content-type") ?? "application/json" } });
 
-/** Sube el logo (multipart) con el token del servidor; evita el límite de 1 MB de las Server Actions. */
+/** Lee o sube el logo (multipart) con el token del servidor; evita el límite de 1 MB de las Server Actions. */
+export async function GET(_req: NextRequest, ctx: Ctx) {
+  const { id } = await ctx.params;
+  if (!UUID.test(id)) return Response.json({ error: { code: "bad_request", message: "Id inválido." } }, { status: 400 });
+  const res = await apiRaw(`/v1/links/${id}/design/logo`);
+  return new Response(res.body, {
+    status: res.status,
+    headers: {
+      "Content-Type": res.headers.get("content-type") ?? "image/png",
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
 export async function POST(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
   if (!UUID.test(id)) return Response.json({ error: { code: "bad_request", message: "Id inválido." } }, { status: 400 });

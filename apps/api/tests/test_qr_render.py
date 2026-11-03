@@ -1,4 +1,6 @@
+import base64
 import io
+import re
 
 import pypdfium2 as pdfium
 import pytest
@@ -353,3 +355,85 @@ def test_transparent_warning_and_contrast_against_white():
 def test_bg_transparent_must_be_bool():
     with pytest.raises(QrRenderError):
         QrDesign(bg_transparent="yes")  # type: ignore[arg-type]
+
+
+# ------------------------------------------------------------------ modo imagen (T065)
+
+
+def _photo(size: int = 400) -> bytes:
+    """Imagen de prueba con zonas claras, oscuras y de color (no un logo plano)."""
+    im = Image.new("RGB", (size, size), "#e8e2d6")
+    d = ImageDraw.Draw(im)
+    d.ellipse((30, 30, size - 30, size - 30), fill="#1f4d2e")
+    d.rectangle((size // 3, size // 3, size * 2 // 3, size * 2 // 3), fill="#c9a227")
+    d.ellipse((size * 5 // 12, size * 5 // 12, size * 7 // 12, size * 7 // 12), fill="#7a1f2b")
+    out = io.BytesIO()
+    im.save(out, format="PNG")
+    return out.getvalue()
+
+
+@pytest.mark.parametrize("mode", ["tint", "silhouette", "halftone", "photo"])
+@pytest.mark.parametrize("size", [512, 1024])
+def test_image_modes_decode(mode, size):
+    d = QrDesign(logo=_photo(), image_mode=mode, ecc="H")
+    assert decode_png(render_png(URL, d, size)) == [URL]
+
+
+@pytest.mark.parametrize("mode", ["tint", "silhouette", "halftone", "photo"])
+@pytest.mark.parametrize("style", ["square", "rounded", "dots"])
+def test_image_modes_module_styles_decode(mode, style):
+    d = QrDesign(logo=_photo(), image_mode=mode, module_style=style, ecc="H")
+    assert decode_png(render_png(URL, d, 600)) == [URL]
+
+
+@pytest.mark.parametrize("frame", ["none", "simple", "rounded", "label"])
+def test_image_mode_frames_decode(frame):
+    d = QrDesign(logo=_photo(), image_mode="halftone", frame=frame, frame_text="Menú")
+    assert decode_png(render_png(URL, d, 600)) == [URL]
+
+
+def test_image_mode_forces_opaque_and_no_center_logo():
+    from app.services.qr_render import _layout
+
+    d = QrDesign(logo=_photo(), image_mode="halftone", bg_transparent=True)
+    assert d.effective_ecc == "H"
+    assert _layout(URL, d).logo_box is None
+    im = Image.open(io.BytesIO(render_png(URL, d, 512)))
+    assert im.mode == "RGB" and im.getpixel((0, 0)) == (255, 255, 255)
+    assert any("fondo se fuerza opaco" in w for w in check_design(d))
+
+
+def test_image_mode_none_keeps_clean_render_identical():
+    a = render_png(URL, QrDesign(logo=_photo()), 512)
+    b = render_png(URL, QrDesign(logo=_photo(), image_mode="none"), 512)
+    assert a == b
+
+
+def test_image_mode_without_logo_warns_and_renders_clean():
+    d = QrDesign(image_mode="halftone")
+    assert any("sin imagen" in w for w in check_design(d))
+    assert decode_png(render_png(URL, d, 512)) == [URL]
+
+
+def test_image_mode_svg_embeds_png():
+    svg = render_svg(URL, QrDesign(logo=_photo(), image_mode="halftone"))
+    assert svg.startswith("<?xml") and "<image" in svg
+    match = re.search(r'href="data:image/png;base64,([^"]+)"', svg)
+    assert match is not None
+    assert decode_png(base64.b64decode(match.group(1))) == [URL]
+
+
+@pytest.mark.parametrize(
+    "kw",
+    [
+        {"image_mode": "x"},
+        {"image_intensity": -0.1},
+        {"image_intensity": 1.1},
+        {"image_intensity": "0.8"},
+        {"image_contrast": 0.4},
+        {"image_contrast": 2.1},
+    ],
+)
+def test_invalid_image_params(kw):
+    with pytest.raises(QrRenderError):
+        QrDesign(**kw)  # type: ignore[arg-type]

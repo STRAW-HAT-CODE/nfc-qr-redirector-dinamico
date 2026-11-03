@@ -51,7 +51,15 @@ DEFAULT_ROW: dict[str, Any] = {
     "ecc_level": "H",
     "frame": "none",
     "logo_path": None,
-    "style": {"margin": 4, "logo_preset": "google", "module_style": "dots", "bg_transparent": True},
+    "style": {
+        "margin": 4,
+        "logo_preset": "google",
+        "module_style": "dots",
+        "bg_transparent": True,
+        "image_mode": "none",
+        "image_intensity": 0.8,
+        "image_contrast": 1.0,
+    },
 }
 
 MEDIA = {
@@ -225,7 +233,14 @@ class QrDesignService:
             "frame": row["frame"],
         }
         extra: dict[str, Any] = {}
-        for key in ("module_style", "margin", "frame_text"):
+        for key in (
+            "module_style",
+            "margin",
+            "frame_text",
+            "image_mode",
+            "image_intensity",
+            "image_contrast",
+        ):
             if key in style:
                 try:
                     QrDesign(**{key: style[key]})
@@ -235,14 +250,15 @@ class QrDesignService:
         if style.get("bg_transparent") is True:
             extra["bg_transparent"] = True
         preset = _row_preset(row)
-        if preset:  # el preset gana sobre logo_path; el logo sale del asset incluido
+        # El preset solo aplica al logo centrado; en modo imagen manda la imagen subida.
+        if preset and extra.get("image_mode", "none") == "none":
             logo = preset_logo(preset)
         return QrDesign(**base, **extra, logo=logo)
 
     def _out(self, link_id: UUID, row: dict[str, Any] | None) -> DesignOut:
         is_default = row is None
         row = DEFAULT_ROW if row is None else row
-        d = self._to_design(row)
+        d = self._to_design(row, preset_logo("google") if row.get("logo_path") else None)
         has_logo = bool(row.get("logo_path"))
         preset = _row_preset(row)
         warnings = check_design(d)
@@ -250,13 +266,14 @@ class QrDesignService:
             link_id=str(link_id),
             fg=d.fg,
             bg=d.bg,
-            ecc_level="H" if has_logo or preset else d.ecc,
+            ecc_level="H" if has_logo or preset or d.image_mode != "none" else d.ecc,
             frame=d.frame,
             module_style=d.module_style,
             margin=d.margin,
             frame_text=d.frame_text,
             has_logo=has_logo,
             logo_preset=preset,
+            image_mode=d.image_mode,
             style=(row.get("style") if isinstance(row.get("style"), dict) else {}),
             is_default=is_default,
             updated_at=row.get("updated_at"),
@@ -266,6 +283,13 @@ class QrDesignService:
     async def get_design(self, link_id: UUID) -> DesignOut:
         await self._slug(link_id)
         return self._out(link_id, await self._row(link_id))
+
+    async def get_logo(self, link_id: UUID) -> bytes:
+        await self._slug(link_id)
+        row = await self._row(link_id)
+        if not row or not row.get("logo_path"):
+            raise ApiError(404, "logo_not_found", "El enlace no tiene imagen")
+        return await self._fetch_logo(str(row["logo_path"]))
 
     async def put_design(self, link_id: UUID, body: DesignIn) -> DesignOut:
         await self._slug(link_id)
@@ -284,10 +308,26 @@ class QrDesignService:
             raise ApiError(422, "design_invalid", str(exc)) from None
         current = await self._row(link_id)
         has_logo = bool(current and current.get("logo_path"))
+        current_style = (current or {}).get("style")
+        if not isinstance(current_style, dict):
+            current_style = {}
         style: dict[str, Any] = {"module_style": body.module_style, "margin": body.margin}
         if body.frame_text:
             style["frame_text"] = body.frame_text
-        if body.logo_preset:
+        # La web envía siempre las claves de imagen. Un cliente antiguo no las envía: se
+        # conserva lo guardado para no perder el modo de imagen de forma silenciosa.
+        for key in ("image_mode", "image_intensity", "image_contrast"):
+            if body.style is not None and key in body.style.model_fields_set:
+                value = getattr(body.style, key)
+                if value is not None:
+                    style[key] = value
+            elif key in current_style:
+                style[key] = current_style[key]
+        image_mode = style.get("image_mode", "none")
+        if image_mode not in ("none", "tint", "silhouette", "halftone", "photo"):
+            style.pop("image_mode", None)
+            image_mode = "none"
+        if body.logo_preset and image_mode == "none":
             style["logo_preset"] = body.logo_preset
         if body.bg_transparent:
             style["bg_transparent"] = True
@@ -297,8 +337,10 @@ class QrDesignService:
             "fg": _norm_hex(body.fg, "fg"),
             "bg": _norm_hex(body.bg, "bg"),
             "frame": body.frame,
-            # con logo o preset, H (CHECK en BD)
-            "ecc_level": "H" if has_logo or body.logo_preset else body.ecc_level,
+            # con logo, preset o imagen, H (CHECK en BD)
+            "ecc_level": "H"
+            if has_logo or body.logo_preset or image_mode != "none"
+            else body.ecc_level,
             "style": style,
         }
         rows = await self._run(self._db.upsert(DESIGNS, row, "link_id"))
@@ -309,6 +351,9 @@ class QrDesignService:
         png = await asyncio.to_thread(reencode_logo, data)
         current = await self._row(link_id)
         old = str(current["logo_path"]) if current and current.get("logo_path") else None
+        raw_style = current.get("style") if current else None
+        style = dict(raw_style) if isinstance(raw_style, dict) else {}
+        style.pop("logo_preset", None)  # la imagen subida sustituye al preset de Google
         path = f"{self._org_id}/{link_id}-{uuid4()}.png"
         await self._put_logo(path, png)
         row: dict[str, Any] = {
@@ -316,6 +361,7 @@ class QrDesignService:
             "org_id": str(self._org_id),
             "logo_path": path,
             "ecc_level": "H",
+            "style": style,
         }
         try:
             rows = await self._run(self._db.upsert(DESIGNS, row, "link_id"))
@@ -331,11 +377,14 @@ class QrDesignService:
         if not current or not current.get("logo_path"):
             return self._out(link_id, current)
         old = str(current["logo_path"])
+        raw_style = current.get("style")
+        style = dict(raw_style) if isinstance(raw_style, dict) else {}
+        style["image_mode"] = "none"  # sin imagen no hay modo imagen coherente
         rows = await self._run(
             self._db.update(
                 DESIGNS,
                 {"link_id": f"eq.{link_id}", "org_id": f"eq.{self._org_id}"},
-                {"logo_path": None},
+                {"logo_path": None, "style": style},
             )
         )
         await self._delete_logo(old)
@@ -358,12 +407,23 @@ class QrDesignService:
         row = await self._row(link_id)
         logo = None
         preset = "google" if template == "google_review" else _row_preset(row or DEFAULT_ROW)
-        if preset is None and row and row.get("logo_path"):  # el preset evita tocar Storage
+        raw_style = (row or {}).get("style")
+        image_mode_row = (
+            raw_style.get("image_mode", "none") if isinstance(raw_style, dict) else "none"
+        )
+        # En modo imagen manda la imagen subida; el preset solo evita Storage para el logo centrado.
+        if row and row.get("logo_path") and (preset is None or image_mode_row != "none"):
             logo = await self._fetch_logo(str(row["logo_path"]))
+        wants_image = False
         try:
             design = self._to_design(row, logo)
+            wants_image = design.image_mode != "none"
             if template != "none":  # las piezas imprimibles llevan su propio fondo
                 design = replace(design, bg_transparent=False)
+                if wants_image:  # las plantillas no rasterizan la imagen: logo centrado
+                    design = replace(design, image_mode="none")
+                    if preset is not None and design.logo is None:
+                        design = replace(design, logo=preset_logo(preset))
             if template == "google_review":  # la plantilla siempre lleva la G, con ECC H
                 design = replace(design, logo=preset_logo("google"))
             payload = qr_payload(self._settings.public_redirect_base_url, slug, "q")
@@ -372,6 +432,11 @@ class QrDesignService:
                 500, "config_error", "Diseño o PUBLIC_REDIRECT_BASE_URL no válidos"
             ) from None
         warnings = check_design(design)
+        if template != "none" and wants_image:
+            warnings.append(
+                "Las plantillas imprimibles usan el logo centrado; el modo imagen solo se "
+                "aplica a la descarga QR."
+            )
 
         def work() -> bytes:
             if template != "none":

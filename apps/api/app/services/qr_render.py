@@ -24,7 +24,7 @@ from urllib.parse import quote, urlsplit
 from xml.sax.saxutils import escape
 
 import segno
-from PIL import Image, ImageDraw, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps, UnidentifiedImageError
 
 from app.services.qr_fonts import SVG_FAMILY, load_font
 from app.services.slug import is_valid_slug
@@ -33,6 +33,7 @@ Channel = Literal["q", "n"]
 Ecc = Literal["L", "M", "Q", "H"]
 Frame = Literal["none", "simple", "rounded", "label"]
 ModuleStyle = Literal["square", "rounded", "dots"]
+ImageMode = Literal["none", "tint", "silhouette", "halftone", "photo"]
 
 MIN_SIZE = 128
 MAX_SIZE = 4096
@@ -41,6 +42,8 @@ MAX_LOGO_PIXELS = 4_000_000  # anti decompression bomb
 MAX_LABEL_LEN = 30
 LOGO_AREA_FRACTION = 0.20
 CONTRAST_MIN = 4.5
+# Luminancia mínima de una celda clara en modo imagen. Por debajo se aclara con `bg`.
+IMAGE_LIGHT_MIN = 0.62
 
 _HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 _TAG_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -48,6 +51,7 @@ _LOGO_FORMATS = {"PNG", "JPEG", "WEBP"}
 _ECC_LEVELS = ("L", "M", "Q", "H")
 _FRAMES = ("none", "simple", "rounded", "label")
 _STYLES = ("square", "rounded", "dots")
+_IMAGE_MODES = ("none", "tint", "silhouette", "halftone", "photo")
 
 
 class QrRenderError(ValueError):
@@ -122,6 +126,11 @@ class QrDesign:
     # PNG RGBA / SVG sin fondo; el PDF mantiene blanco (formato de impresión). `bg` sigue siendo
     # el color de referencia (contraste y texto del marco).
     bg_transparent: bool = False
+    # DQR-T065: la imagen subida (`logo`) se usa como relleno del QR. `none` conserva el logo
+    # centrado de siempre. En modo imagen se fuerza ECC H y fondo opaco.
+    image_mode: ImageMode = "none"
+    image_intensity: float = 0.8
+    image_contrast: float = 1.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fg", _norm_hex(self.fg, "fg"))
@@ -132,10 +141,24 @@ class QrDesign:
             raise QrRenderError("frame inválido")
         if self.module_style not in _STYLES:
             raise QrRenderError("module_style inválido")
+        if self.image_mode not in _IMAGE_MODES:
+            raise QrRenderError("image_mode inválido")
         if not isinstance(self.bg_transparent, bool):
             raise QrRenderError("bg_transparent debe ser booleano")
         if not isinstance(self.margin, int) or not 0 <= self.margin <= 16:
             raise QrRenderError("margin debe estar entre 0 y 16 módulos")
+        if (
+            isinstance(self.image_intensity, bool)
+            or not isinstance(self.image_intensity, int | float)
+            or not 0.0 <= float(self.image_intensity) <= 1.0
+        ):
+            raise QrRenderError("image_intensity debe estar entre 0 y 1")
+        if (
+            isinstance(self.image_contrast, bool)
+            or not isinstance(self.image_contrast, int | float)
+            or not 0.5 <= float(self.image_contrast) <= 2.0
+        ):
+            raise QrRenderError("image_contrast debe estar entre 0.5 y 2")
         if self.frame_text is not None and (
             len(self.frame_text) > MAX_LABEL_LEN
             or any(ord(c) < 32 or ord(c) == 127 for c in self.frame_text)
@@ -146,7 +169,7 @@ class QrDesign:
 
     @property
     def effective_ecc(self) -> Ecc:
-        return "H" if self.logo is not None else self.ecc
+        return "H" if self.logo is not None or self.image_mode != "none" else self.ecc
 
     @property
     def label(self) -> str:
@@ -203,16 +226,17 @@ def contrast_ratio(fg: str, bg: str) -> float:
 def check_design(design: QrDesign) -> list[str]:
     """Avisos (no bloqueantes) sobre legibilidad."""
     warnings: list[str] = []
-    if design.bg_transparent:
+    transparent = design.bg_transparent and design.image_mode == "none"
+    if transparent:
         warnings.append("Fondo transparente: colócalo sobre una superficie clara")
     # con fondo transparente el contraste se calcula contra blanco
-    ratio = contrast_ratio(design.fg, "#ffffff" if design.bg_transparent else design.bg)
+    ratio = contrast_ratio(design.fg, "#ffffff" if transparent else design.bg)
     if ratio < CONTRAST_MIN:
         warnings.append(
             f"Contraste bajo ({ratio:.1f}:1, mínimo recomendado {CONTRAST_MIN}:1): "
             "el QR puede no leerse."
         )
-    ref_bg = "#ffffff" if design.bg_transparent else design.bg
+    ref_bg = "#ffffff" if transparent else design.bg
     if _luminance(design.fg) > _luminance(ref_bg):
         warnings.append(
             "Colores invertidos (módulos más claros que el fondo): "
@@ -222,6 +246,15 @@ def check_design(design: QrDesign) -> list[str]:
         warnings.append("Zona de silencio menor a 4 módulos: algunos lectores pueden fallar.")
     if design.logo is not None and design.ecc != "H":
         warnings.append("Con logo se fuerza la corrección de errores H.")
+    if design.image_mode != "none":
+        if design.logo is None:
+            warnings.append("Modo imagen sin imagen: sube un logo o imagen.")
+        else:
+            warnings.append(
+                "Modo imagen: la foto reduce el contraste; escanea el QR en su tamaño final."
+            )
+        if design.bg_transparent:
+            warnings.append("En modo imagen el fondo se fuerza opaco para conservar el contraste.")
     return warnings
 
 
@@ -253,7 +286,7 @@ def _layout(payload: str, design: QrDesign) -> _Layout:
     band = 6.0 if design.frame == "label" else 0.0
     logo_box = None
     ox = oy = float(pad + m)
-    if design.logo is not None:
+    if design.logo is not None and design.image_mode == "none":
         # caja (logo + fondo de seguridad) con lado impar de módulos, ≤ 20 % del área
         side = int(math.sqrt(LOGO_AREA_FRACTION) * n)
         side -= (side + n) % 2  # misma paridad que n → centrada en la rejilla
@@ -307,13 +340,141 @@ def _logo_fit(design: QrDesign, lay: _Layout) -> tuple[Image.Image, tuple[float,
 # --------------------------------------------------------------------------- PNG
 
 
+def _image_on(design: QrDesign) -> bool:
+    """Modo imagen solo si hay una imagen subida; sin ella se conserva el QR limpio."""
+    return design.image_mode != "none" and design.logo is not None
+
+
+def _draw_module(
+    d: ImageDraw.ImageDraw,
+    x0: float,
+    y0: float,
+    px: float,
+    style: str,
+    fill: tuple[int, int, int] | str,
+    radius: float | None = None,
+) -> None:
+    x1, y1 = x0 + px, y0 + px
+    if radius is not None:  # halftone: punto de radio variable centrado en el módulo
+        cx, cy = x0 + px / 2, y0 + px / 2
+        r = max(0.5, radius * px)
+        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=fill)
+    elif style == "square":
+        d.rectangle((x0, y0, x1 - 1, y1 - 1), fill=fill)
+    elif style == "dots":
+        d.ellipse((x0, y0, x1 - 1, y1 - 1), fill=fill)
+    else:
+        d.rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=0.3 * px, fill=fill)
+
+
+def _luma(img: Image.Image, x: int, y: int) -> float:
+    """Luminancia 0..1 de un píxel (la imagen intermedia siempre es L)."""
+    value = img.getpixel((x, y))
+    if isinstance(value, tuple):
+        return value[0] / 255.0
+    if isinstance(value, int | float):
+        return float(value) / 255.0
+    return 0.0
+
+
+def _rgb_at(img: Image.Image, x: int, y: int) -> tuple[int, int, int]:
+    value = img.getpixel((x, y))
+    if isinstance(value, tuple) and len(value) >= 3:
+        return int(value[0]), int(value[1]), int(value[2])
+    return 0, 0, 0
+
+
+def _paint_image_qr(img: Image.Image, lay: _Layout, design: QrDesign, px: float) -> Image.Image:
+    """Pinta el QR sobre la imagen: relleno, celdas claras aclaradas y módulos oscuros encima.
+
+    `tint` muestrea la imagen por módulo y mezcla cada celda con `fg`/`bg` (mosaico); el resto
+    pega la imagen y aclara las celdas claras que no tengan luminancia suficiente.
+    """
+    if design.logo is None:  # defensa: `_image_on` ya lo comprueba
+        return img
+    n = lay.n
+    src = ImageEnhance.Contrast(_load_logo(design.logo)).enhance(float(design.image_contrast))
+    if design.image_mode == "silhouette":
+        threshold = 96 + 64 * float(design.image_intensity)
+        src = src.convert("L").point(lambda v: 255 if v >= threshold else 0).convert("RGBA")
+    area = max(1, round(n * px))
+    src = ImageOps.fit(src, (area, area), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+    small = src.convert("L").resize((n, n), Image.Resampling.BOX)
+    x0m, y0m = round(lay.ox * px), round(lay.oy * px)
+    d = ImageDraw.Draw(img)
+
+    if design.image_mode == "tint":
+        small_rgb = src.convert("RGB").resize((n, n), Image.Resampling.BOX)
+        intensity = float(design.image_intensity)
+        dark_mix, light_mix = 0.55 + 0.35 * intensity, 0.72 + 0.20 * intensity
+        for r in range(n):
+            for c in range(n):
+                x0, y0 = x0m + c * px, y0m + r * px
+                if _is_finder(r, c, n):  # finder sólido: negro en módulos, `bg` en separadores
+                    _draw_module(
+                        d, x0, y0, px, "square", design.fg if lay.matrix[r][c] else design.bg
+                    )
+                    continue
+                sample = _rgb_at(small_rgb, c, r)
+                dark = bool(lay.matrix[r][c])
+                target = _rgb(design.fg) if dark else _rgb(design.bg)
+                mix = dark_mix if dark else light_mix
+                fill = (
+                    round(sample[0] * (1 - mix) + target[0] * mix),
+                    round(sample[1] * (1 - mix) + target[1] * mix),
+                    round(sample[2] * (1 - mix) + target[2] * mix),
+                )
+                _draw_module(d, x0, y0, px, design.module_style, fill)
+        return img
+
+    img.paste(src, (x0m, y0m), src)
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay)
+    base_alpha = {"silhouette": 0.55, "halftone": 0.40, "photo": 0.30}.get(design.image_mode, 0.40)
+    intensity = float(design.image_intensity)
+    for r in range(n):
+        for c in range(n):
+            if lay.matrix[r][c]:
+                continue
+            x0, y0 = x0m + c * px, y0m + r * px
+            if _is_finder(r, c, n):  # separador del finder: siempre `bg` limpio
+                od.rectangle((x0, y0, x0 + px - 1, y0 + px - 1), fill=(*_rgb(design.bg), 255))
+                continue
+            lum = _luma(small, c, r)
+            if lum >= IMAGE_LIGHT_MIN:
+                continue
+            alpha = min(0.92, base_alpha + (IMAGE_LIGHT_MIN - lum) * 1.2)
+            alpha *= 0.65 + 0.35 * intensity
+            od.rectangle(
+                (x0, y0, x0 + px - 1, y0 + px - 1),
+                fill=(*_rgb(design.bg), round(alpha * 255)),
+            )
+    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
+    d = ImageDraw.Draw(img)
+    for r in range(n):
+        for c in range(n):
+            if not lay.matrix[r][c]:
+                continue
+            x0, y0 = x0m + c * px, y0m + r * px
+            if _is_finder(r, c, n):
+                _draw_module(d, x0, y0, px, "square", design.fg)
+            elif design.image_mode == "halftone":
+                lum = _luma(small, c, r)
+                _draw_module(d, x0, y0, px, "dots", design.fg, radius=0.34 + 0.16 * (1 - lum))
+            else:
+                _draw_module(d, x0, y0, px, design.module_style, design.fg)
+    return img
+
+
 def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
     _check_size(size)
     lay = _layout(payload, design)
     ss = max(1, min(4, MAX_SIZE // size))
     px = size * ss / lay.width  # px por módulo
     w, h = size * ss, round(lay.height * px)
-    transp = design.bg_transparent
+    image_on = _image_on(design)
+    # En modo imagen el fondo se fuerza opaco: la imagen necesita un fondo sólido.
+    transp = design.bg_transparent and not image_on
     bg_fill: tuple[int, ...] | str = (*_rgb(design.bg), 0) if transp else design.bg
     img = Image.new("RGBA" if transp else "RGB", (w, h), bg_fill)
     d = ImageDraw.Draw(img)
@@ -335,32 +496,36 @@ def render_png(payload: str, design: QrDesign, size: int = 512) -> bytes:
                 anchor="mm",
             )
 
-    r_mod = {"square": 0.0, "rounded": 0.3, "dots": 0.5}[design.module_style]
-    for r, c in _dark_modules(lay):
-        x0, y0 = (lay.ox + c) * px, (lay.oy + r) * px
-        x1, y1 = x0 + px, y0 + px
-        rad = 0.0 if _is_finder(r, c, lay.n) else r_mod
-        if rad == 0:
-            d.rectangle((x0, y0, x1 - 1, y1 - 1), fill=design.fg)
-        elif rad >= 0.5:
-            d.ellipse((x0, y0, x1 - 1, y1 - 1), fill=design.fg)
-        else:
-            d.rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=rad * px, fill=design.fg)
+    if image_on:
+        img = _paint_image_qr(img, lay, design, px)
+    else:
+        r_mod = {"square": 0.0, "rounded": 0.3, "dots": 0.5}[design.module_style]
+        for r, c in _dark_modules(lay):
+            x0, y0 = (lay.ox + c) * px, (lay.oy + r) * px
+            x1, y1 = x0 + px, y0 + px
+            rad = 0.0 if _is_finder(r, c, lay.n) else r_mod
+            if rad == 0:
+                d.rectangle((x0, y0, x1 - 1, y1 - 1), fill=design.fg)
+            elif rad >= 0.5:
+                d.ellipse((x0, y0, x1 - 1, y1 - 1), fill=design.fg)
+            else:
+                d.rounded_rectangle((x0, y0, x1 - 1, y1 - 1), radius=rad * px, fill=design.fg)
 
-    fit = _logo_fit(design, lay)
-    if fit and lay.logo_box:
-        im, (lx, ly) = fit
-        bx0, by0, bx1, by1 = lay.logo_box
-        d.rectangle((bx0 * px, by0 * px, bx1 * px - 1, by1 * px - 1), fill=bg_fill)
-        tw = max(1, round(im.width * (lay.logo_box[2] - lay.logo_box[0] - 1) / max(im.size) * px))
-        th = max(1, round(im.height * (lay.logo_box[2] - lay.logo_box[0] - 1) / max(im.size) * px))
-        scaled = im.resize((tw, th), Image.Resampling.LANCZOS)
-        if transp:  # componer sobre capa transparente: el alfa del logo se conserva
-            layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
-            layer.paste(scaled, (round(lx * px), round(ly * px)))
-            img = Image.alpha_composite(img, layer)
-        else:
-            img.paste(scaled, (round(lx * px), round(ly * px)), scaled)
+        fit = _logo_fit(design, lay)
+        if fit and lay.logo_box:
+            im, (lx, ly) = fit
+            bx0, by0, bx1, by1 = lay.logo_box
+            d.rectangle((bx0 * px, by0 * px, bx1 * px - 1, by1 * px - 1), fill=bg_fill)
+            avail = lay.logo_box[2] - lay.logo_box[0] - 1
+            tw = max(1, round(im.width * avail / max(im.size) * px))
+            th = max(1, round(im.height * avail / max(im.size) * px))
+            scaled = im.resize((tw, th), Image.Resampling.LANCZOS)
+            if transp:  # componer sobre capa transparente: el alfa del logo se conserva
+                layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+                layer.paste(scaled, (round(lx * px), round(ly * px)))
+                img = Image.alpha_composite(img, layer)
+            else:
+                img.paste(scaled, (round(lx * px), round(ly * px)), scaled)
 
     if ss > 1:
         img = img.resize((size, round(lay.height * size / lay.width)), Image.Resampling.LANCZOS)
@@ -470,6 +635,21 @@ def svg_body(lay: _Layout, design: QrDesign) -> list[str]:
 def render_svg(payload: str, design: QrDesign) -> str:
     lay = _layout(payload, design)
     w, h = lay.width, lay.height
+    if _image_on(design):
+        # El modo imagen se rasteriza (y se incrusta como PNG): reproduce el render exacto y
+        # mantiene el SVG autocontenido. El QR limpio sigue siendo vectorial.
+        png = render_png(payload, design, size=2048)
+        b64 = base64.b64encode(png).decode()
+        return "\n".join(
+            [
+                '<?xml version="1.0" encoding="UTF-8"?>',
+                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {_f(w)} {_f(h)}" '
+                f'width="{_f(w * 10)}" height="{_f(h * 10)}">',
+                "<title>QR</title>",
+                f'<image width="{_f(w)}" height="{_f(h)}" href="data:image/png;base64,{b64}"/>',
+                "</svg>",
+            ]
+        )
     head = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         f'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" '

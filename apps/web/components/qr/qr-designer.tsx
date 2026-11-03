@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { EccLevel, ModuleStyle, QrDesign, QrFrame } from "@/lib/api";
+import type { EccLevel, ImageMode, ModuleStyle, QrDesign, QrFrame } from "@/lib/api";
 
 import { CanvaButton } from "./canva-button";
 import { ColorPicker } from "./color-picker";
@@ -29,25 +29,46 @@ interface Draft {
   module_style: ModuleStyle;
   margin: number;
   bg_transparent: boolean;
+  image_mode: ImageMode;
+  image_intensity: number;
+  image_contrast: number;
 }
 
-const toDraft = (d: QrDesign): Draft => ({
-  fg: d.fg, bg: d.bg, ecc_level: d.has_logo || d.style?.logo_preset ? "H" : d.ecc_level, frame: d.frame,
-  frame_text: d.frame_text ?? "", module_style: d.module_style, margin: d.margin,
-  bg_transparent: !!d.style?.bg_transparent,
-});
+const toDraft = (d: QrDesign): Draft => {
+  const imageMode = d.image_mode ?? d.style?.image_mode ?? "none";
+  return {
+    fg: d.fg, bg: d.bg,
+    ecc_level: d.has_logo || d.style?.logo_preset || imageMode !== "none" ? "H" : d.ecc_level,
+    frame: d.frame, frame_text: d.frame_text ?? "", module_style: d.module_style, margin: d.margin,
+    bg_transparent: !!d.style?.bg_transparent,
+    image_mode: imageMode,
+    image_intensity: d.style?.image_intensity ?? 0.8,
+    image_contrast: d.style?.image_contrast ?? 1,
+  };
+};
 
 const PRESET_GOOGLE = { fg: "#000000", bg: "#FFFFFF", frame: "none", module_style: "square" } as const;
 const GOOGLE_G = "/presets/google-g.svg";
 
-const withoutFlag = (d: Draft): Omit<Draft, "bg_transparent"> => {
-  const { bg_transparent, ...rest } = d;
+/** Campos que van en el cuerpo del PUT; `style` se envía aparte (evita 422 por extras). */
+const toDesignBody = (d: Draft) => {
+  const { bg_transparent, image_mode, image_intensity, image_contrast, ...rest } = d;
   void bg_transparent;
+  void image_mode;
+  void image_intensity;
+  void image_contrast;
   return rest;
 };
 
 const ECC: Record<EccLevel, string> = { L: "L · 7 %", M: "M · 15 %", Q: "Q · 25 %", H: "H · 30 %" };
 const STYLES: Record<ModuleStyle, string> = { square: "Cuadrados", rounded: "Redondeados", dots: "Puntos" };
+const IMAGE_MODES: Record<ImageMode, string> = {
+  none: "Solo logo (centro)",
+  tint: "Tinte por módulo",
+  silhouette: "Silueta",
+  halftone: "Halftone (puntos)",
+  photo: "Foto",
+};
 
 export function QrDesigner({
   linkId, shortUrl, initial, canEdit,
@@ -58,7 +79,8 @@ export function QrDesigner({
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
 
-  useEffect(() => () => { if (logoUrl) URL.revokeObjectURL(logoUrl); }, [logoUrl]);
+  useEffect(() => () => { if (logoUrl?.startsWith("blob:")) URL.revokeObjectURL(logoUrl); }, [logoUrl]);
+  const effectiveLogoUrl = logoUrl ?? (saved.has_logo ? `/api/qr/${linkId}/logo?t=${encodeURIComponent(saved.updated_at ?? "1")}` : null);
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }));
   const base = toDraft(saved);
@@ -66,13 +88,37 @@ export function QrDesigner({
   const locked = !canEdit || pending;
   const preset = saved.style?.logo_preset ?? null;
   const [presetBusy, startPreset] = useTransition();
+  const imageOn = draft.image_mode !== "none";
+  const eccLocked = saved.has_logo || !!preset || imageOn;
 
   function applyPreset(on: boolean) {
     setError(undefined);
     startPreset(async () => {
       const input = on
-        ? { ...PRESET_GOOGLE, ecc_level: "H" as const, margin: saved.margin, frame_text: null, style: { logo_preset: "google" as const, bg_transparent: draft.bg_transparent } }
-        : { ...withoutFlag(toDraft(saved)), frame_text: saved.frame === "label" ? saved.frame_text : null, style: { logo_preset: null, bg_transparent: !!saved.style?.bg_transparent } };
+        ? {
+            ...PRESET_GOOGLE,
+            ecc_level: "H" as const,
+            margin: saved.margin,
+            frame_text: null,
+            style: {
+              logo_preset: "google" as const,
+              bg_transparent: draft.bg_transparent,
+              image_mode: "none" as const,
+              image_intensity: 0.8,
+              image_contrast: 1,
+            },
+          }
+        : {
+            ...toDesignBody(toDraft(saved)),
+            frame_text: saved.frame === "label" ? saved.frame_text : null,
+            style: {
+              logo_preset: null,
+              bg_transparent: !!saved.style?.bg_transparent,
+              image_mode: draft.image_mode,
+              image_intensity: draft.image_intensity,
+              image_contrast: draft.image_contrast,
+            },
+          };
       const res = await saveDesignAction(linkId, input);
       if (res.ok) {
         setSaved(res.design);
@@ -86,8 +132,14 @@ export function QrDesigner({
     setError(undefined);
     start(async () => {
       const res = await saveDesignAction(linkId, {
-        ...withoutFlag(draft), frame_text: draft.frame === "label" ? draft.frame_text : null,
-        style: { logo_preset: preset, bg_transparent: draft.bg_transparent },
+        ...toDesignBody(draft), frame_text: draft.frame === "label" ? draft.frame_text : null,
+        style: {
+          logo_preset: draft.image_mode === "none" ? preset : null,
+          bg_transparent: draft.bg_transparent,
+          image_mode: draft.image_mode,
+          image_intensity: draft.image_intensity,
+          image_contrast: draft.image_contrast,
+        },
       });
       if (res.ok) {
         setSaved(res.design);
@@ -99,9 +151,19 @@ export function QrDesigner({
 
   function onLogo(design: QrDesign, url: string | null) {
     setLogoUrl(url);
-    setSaved((s) => ({ ...s, has_logo: design.has_logo, warnings: design.warnings }));
+    // Subir una imagen sustituye el logo de Google; el estilo se persiste al guardar.
+    const imageMode = design.image_mode ?? "none";
+    setSaved((s) => ({
+      ...s,
+      has_logo: design.has_logo,
+      logo_preset: null,
+      image_mode: imageMode,
+      style: { ...s.style, logo_preset: null, image_mode: imageMode },
+      warnings: design.warnings,
+    }));
     // Con logo el ECC pasa a H (el servidor lo exige); lo reflejamos como cambio sin guardar.
     if (design.has_logo) set("ecc_level", "H");
+    else set("image_mode", "none"); // sin imagen no hay modo imagen
   }
 
   return (
@@ -116,12 +178,16 @@ export function QrDesigner({
           </CardHeader>
           <CardContent className="grid justify-items-center gap-4">
             <QrPreview
-              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} transparent={draft.bg_transparent} ecc={saved.has_logo || preset ? "H" : draft.ecc_level}
+              data={`${shortUrl}?c=q`} fg={draft.fg} bg={draft.bg} transparent={draft.bg_transparent && !imageOn} ecc={eccLocked ? "H" : draft.ecc_level}
               frame={draft.frame} frameText={draft.frame_text} moduleStyle={draft.module_style}
-              margin={draft.margin} hasLogo={saved.has_logo || !!preset} logoUrl={preset ? GOOGLE_G : logoUrl}
+              margin={draft.margin} hasLogo={saved.has_logo || !!preset} logoUrl={preset ? GOOGLE_G : effectiveLogoUrl}
+              imageMode={draft.image_mode} imageUrl={effectiveLogoUrl}
             />
             <p className="max-w-sm text-center text-xs text-muted-foreground">
-              Aproximación en vivo. Las descargas usan el diseño guardado.
+              Aproximación en vivo. Las descargas usan el diseño guardado.{" "}
+              <a className="underline underline-offset-2" href={`/api/qr/${linkId}/png?size=1024`} target="_blank" rel="noreferrer">
+                Ver render real
+              </a>
             </p>
             <div className="flex flex-wrap items-center justify-center gap-3">
               <DownloadMenu linkId={linkId} dirty={dirty} />
@@ -147,7 +213,7 @@ export function QrDesigner({
           </div>
           <label className="flex cursor-pointer items-start gap-3 text-sm">
             <input
-              type="checkbox" role="switch" checked={draft.bg_transparent} disabled={locked}
+              type="checkbox" role="switch" checked={draft.bg_transparent} disabled={locked || imageOn}
               onChange={(e) => set("bg_transparent", e.target.checked)}
               aria-describedby="bg-transparent-help" className="peer sr-only"
             />
@@ -158,7 +224,9 @@ export function QrDesigner({
             <span className="grid gap-0.5">
               <span className="font-medium">Fondo transparente</span>
               <span id="bg-transparent-help" className="text-xs text-muted-foreground">
-                PNG y SVG sin fondo, para colocar sobre tus diseños (p. ej. Canva). El PDF mantiene fondo blanco.
+                {imageOn
+                  ? "En modo imagen el fondo se fuerza opaco para conservar el contraste."
+                  : "PNG y SVG sin fondo, para colocar sobre tus diseños (p. ej. Canva). El PDF mantiene fondo blanco."}
               </span>
             </span>
           </label>
@@ -179,15 +247,15 @@ export function QrDesigner({
 
           <div className="grid gap-1.5">
             <Label htmlFor="ecc">Corrección de errores</Label>
-            <Select value={draft.ecc_level} onValueChange={(v) => set("ecc_level", v as EccLevel)} disabled={locked || saved.has_logo || !!preset}>
+            <Select value={draft.ecc_level} onValueChange={(v) => set("ecc_level", v as EccLevel)} disabled={locked || eccLocked}>
               <SelectTrigger id="ecc" className="w-full" aria-describedby="ecc-help"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {Object.entries(ECC).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
               </SelectContent>
             </Select>
             <p id="ecc-help" className="text-xs text-muted-foreground">
-              {saved.has_logo || preset
-                ? "Bloqueado en H: el logo tapa parte del código y necesita la máxima corrección."
+              {eccLocked
+                ? "Bloqueado en H: el logo o la imagen tapa parte del código y necesita la máxima corrección."
                 : "Más corrección tolera más daño, pero el QR es más denso."}
             </p>
           </div>
@@ -200,7 +268,53 @@ export function QrDesigner({
 
           <FramePicker frame={draft.frame} text={draft.frame_text} onFrame={(f) => set("frame", f)} onText={(t) => set("frame_text", t)} disabled={locked} />
 
-          <LogoUpload linkId={linkId} hasLogo={saved.has_logo} localUrl={logoUrl} onChange={onLogo} disabled={locked} />
+          <LogoUpload linkId={linkId} hasLogo={saved.has_logo} localUrl={effectiveLogoUrl} onChange={onLogo} disabled={locked} />
+
+          <div className="grid gap-1.5">
+            <Label htmlFor="image-mode">Imagen en el QR</Label>
+            <Select
+              value={draft.image_mode}
+              onValueChange={(v) => {
+                const mode = v as ImageMode;
+                set("image_mode", mode);
+                if (mode !== "none") set("bg_transparent", false);
+              }}
+              disabled={locked || !saved.has_logo}
+            >
+              <SelectTrigger id="image-mode" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {Object.entries(IMAGE_MODES).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {saved.has_logo
+                ? "La imagen subida se usa como relleno del QR. La vista previa es aproximada; descarga el PNG o SVG para comprobarla."
+                : "Sube primero un logo o imagen para activar los modos de imagen."}
+            </p>
+          </div>
+
+          {imageOn ? (
+            <div className="grid gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="image-intensity">Intensidad de imagen: {draft.image_intensity.toFixed(2)}</Label>
+                <input
+                  id="image-intensity" type="range" min={0} max={1} step={0.05}
+                  value={draft.image_intensity} disabled={locked}
+                  onChange={(e) => set("image_intensity", Number(e.target.value))}
+                  className="accent-primary"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="image-contrast">Contraste de imagen: {draft.image_contrast.toFixed(2)}</Label>
+                <input
+                  id="image-contrast" type="range" min={0.5} max={2} step={0.05}
+                  value={draft.image_contrast} disabled={locked}
+                  onChange={(e) => set("image_contrast", Number(e.target.value))}
+                  className="accent-primary"
+                />
+              </div>
+            </div>
+          ) : null}
 
           {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
           {canEdit ? (

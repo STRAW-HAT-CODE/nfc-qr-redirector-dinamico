@@ -3,7 +3,7 @@
 import qrcode from "qrcode-generator";
 import { useEffect, useMemo, useState } from "react";
 
-import type { EccLevel, ModuleStyle, QrFrame } from "@/lib/api";
+import type { EccLevel, ImageMode, ModuleStyle, QrFrame } from "@/lib/api";
 
 export interface PreviewParams {
   data: string;
@@ -18,6 +18,9 @@ export interface PreviewParams {
   margin: number;
   hasLogo: boolean;
   logoUrl?: string | null;
+  /** DQR-T065: aproximación del modo imagen (la descarga real la rasteriza el servidor). */
+  imageMode?: ImageMode;
+  imageUrl?: string | null;
 }
 
 /** Cuadrícula (checkerboard) para que se aprecie la transparencia. */
@@ -44,17 +47,20 @@ function useDebounced<T>(value: T, ms: number): T {
  */
 export function QrPreview(props: PreviewParams) {
   const p = useDebounced(props, 150);
-  const { cells, n } = useMemo(() => {
+  const { cells, light, n } = useMemo(() => {
     try {
       const qr = qrcode(0, p.ecc);
       qr.addData(p.data);
       qr.make();
       const n = qr.getModuleCount();
       const cells: [number, number][] = [];
-      for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) cells.push([c, r]);
-      return { cells, n };
+      const light: [number, number][] = [];
+      for (let r = 0; r < n; r++) {
+        for (let c = 0; c < n; c++) (qr.isDark(r, c) ? cells : light).push([c, r]);
+      }
+      return { cells, light, n };
     } catch {
-      return { cells: [], n: 0 };
+      return { cells: [], light: [], n: 0 };
     }
   }, [p.data, p.ecc]);
 
@@ -71,6 +77,8 @@ export function QrPreview(props: PreviewParams) {
   const rx = p.moduleStyle === "dots" ? 0.5 : p.moduleStyle === "rounded" ? 0.3 : 0;
   const logo = side * 0.2;
   const text = p.frameText.trim() || "Escanéame";
+  const imageOn = !!p.imageMode && p.imageMode !== "none";
+  const transparent = !!p.transparent && !imageOn;
 
   return (
     <svg
@@ -78,9 +86,9 @@ export function QrPreview(props: PreviewParams) {
       role="img"
       aria-label={`Vista previa del QR${p.frame === "label" ? ` con marco «${text}»` : ""}`}
       className="h-auto w-full max-w-sm rounded-lg shadow-sm ring-1 ring-border"
-      style={p.transparent ? CHECKER : undefined}
+      style={transparent ? CHECKER : undefined}
     >
-      {!p.transparent && <rect width={W} height={H} fill={p.bg} rx={p.frame === "rounded" ? 2 : 0} />}
+      {!transparent && <rect width={W} height={H} fill={p.bg} rx={p.frame === "rounded" ? 2 : 0} />}
       {p.frame !== "none" && (
         <rect
           x={0.4} y={0.4} width={W - 0.8} height={H - 0.8}
@@ -88,12 +96,24 @@ export function QrPreview(props: PreviewParams) {
           fill="none" stroke={p.fg} strokeWidth={0.6}
         />
       )}
+      {imageOn && p.imageUrl ? (
+        <g transform={`translate(${pad + m} ${pad + m})`}>
+          <image href={p.imageUrl} x={0} y={0} width={n} height={n} preserveAspectRatio="xMidYMid slice" />
+          {p.imageMode ? (
+            <g fill={p.bg}>
+              {light.map(([x, y]) => (
+                <rect key={`l-${x}-${y}`} x={x} y={y} width={1.02} height={1.02} rx={rx} opacity={(x < 8 && y < 8) || (x >= n - 8 && y < 8) || (x < 8 && y >= n - 8) ? 1 : 0.62} />
+              ))}
+            </g>
+          ) : null}
+        </g>
+      ) : null}
       <g transform={`translate(${pad + m} ${pad + m})`} fill={p.fg}>
         {cells.map(([x, y]) => (
           <rect key={`${x}-${y}`} x={x} y={y} width={1.02} height={1.02} rx={rx} />
         ))}
       </g>
-      {p.hasLogo && (
+      {p.hasLogo && !imageOn && (
         <g transform={`translate(${pad + side / 2 - logo / 2} ${pad + side / 2 - logo / 2})`}>
           {!p.transparent && <rect width={logo} height={logo} fill={p.bg} rx={logo * 0.12} />}
           {p.logoUrl ? (

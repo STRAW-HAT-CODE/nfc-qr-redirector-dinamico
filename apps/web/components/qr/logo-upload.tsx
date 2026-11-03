@@ -29,7 +29,7 @@ export function LogoUpload({
   async function upload(file: File) {
     setError(undefined);
     if (!TYPES.includes(file.type)) return setError("Formato no admitido. Usa PNG, JPG o WebP.");
-    if (file.size > MAX) return setError("El logo supera 1 MB.");
+    if (file.size > MAX) return setError("La imagen supera 1 MB.");
     setBusy(true);
     try {
       const fd = new FormData();
@@ -38,7 +38,7 @@ export function LogoUpload({
       if (design) onChange(design, URL.createObjectURL(file));
       else setError(error);
     } catch {
-      setError("No se pudo subir el logo.");
+      setError("No se pudo subir la imagen.");
     } finally {
       setBusy(false);
       if (input.current) input.current.value = "";
@@ -53,7 +53,7 @@ export function LogoUpload({
       if (design) onChange(design, null);
       else setError(error);
     } catch {
-      setError("No se pudo quitar el logo.");
+      setError("No se pudo quitar la imagen.");
     } finally {
       setBusy(false);
     }
@@ -61,17 +61,24 @@ export function LogoUpload({
 
   return (
     <div className="grid gap-2">
-      <span className="text-sm font-medium">Logo</span>
+      <span className="text-sm font-medium">Logo o imagen</span>
       <div className="flex items-center gap-3">
-        <div className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted text-muted-foreground">
+        <div
+          className="flex size-14 shrink-0 cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-muted text-muted-foreground transition-colors hover:bg-muted/80"
+          onClick={() => !disabled && !busy && input.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
+          aria-label="Seleccionar imagen"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          {localUrl ? <img src={localUrl} alt="Logo cargado" className="size-full object-contain" /> : <ImagePlus className="size-5" aria-hidden="true" />}
+          {localUrl ? <img src={localUrl} alt="Imagen cargada" className="size-full object-contain" /> : <ImagePlus className="size-5" aria-hidden="true" />}
         </div>
         <div className="flex flex-wrap gap-2">
-          <input ref={input} type="file" accept={TYPES.join(",")} className="sr-only" aria-label="Archivo de logo" tabIndex={-1}
+          <input ref={input} type="file" accept={TYPES.join(",")} className="sr-only" aria-label="Archivo de logo o imagen" tabIndex={-1}
             onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
           <Button type="button" variant="outline" size="sm" disabled={disabled || busy} onClick={() => input.current?.click()}>
-            {busy ? <Loader2 className="animate-spin" /> : <ImagePlus />} {hasLogo ? "Reemplazar" : "Subir logo"}
+            {busy ? <Loader2 className="animate-spin" /> : <ImagePlus />} {hasLogo ? "Reemplazar" : "Subir imagen"}
           </Button>
           {hasLogo ? (
             <Button type="button" variant="ghost" size="sm" disabled={disabled || busy} onClick={remove}>
@@ -80,7 +87,10 @@ export function LogoUpload({
           ) : null}
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">PNG, JPG o WebP, hasta 1 MB. Con logo se usa corrección H.</p>
+      <p className="text-xs text-muted-foreground">
+        PNG, JPG o WebP, hasta 1 MB. Como logo se coloca en el centro; en modo imagen se usa como
+        relleno del QR. En ambos casos se usa corrección H.
+      </p>
       {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
     </div>
   );

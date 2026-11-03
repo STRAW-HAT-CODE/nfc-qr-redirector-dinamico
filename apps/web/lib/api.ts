@@ -166,12 +166,17 @@ export async function getStatsBundle(orgId: string, range: { from: string; to: s
 export type EccLevel = "L" | "M" | "Q" | "H";
 export type QrFrame = "none" | "simple" | "rounded" | "label";
 export type ModuleStyle = "square" | "rounded" | "dots";
+/** DQR-T065: la imagen subida se usa como relleno del QR (no como logo central). */
+export type ImageMode = "none" | "tint" | "silhouette" | "halftone" | "photo";
 
 export type LogoPreset = "google";
 export interface QrDesignStyle {
   logo_preset?: LogoPreset | null;
   /** Fondo transparente (T061): bg se guarda en #ffffff y este flag lo marca. */
   bg_transparent?: boolean;
+  image_mode?: ImageMode | null;
+  image_intensity?: number | null;
+  image_contrast?: number | null;
 }
 
 export interface QrDesign {
@@ -184,6 +189,8 @@ export interface QrDesign {
   margin: number;
   frame_text: string | null;
   has_logo: boolean;
+  /** Modo de imagen (T065). `none` = logo centrado de siempre. */
+  image_mode?: ImageMode;
   /** Estilo extra (T060). Opcional: la API antigua no lo devuelve. */
   style?: QrDesignStyle | null;
   is_default: boolean;

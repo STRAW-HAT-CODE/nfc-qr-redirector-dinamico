@@ -49,6 +49,16 @@ async def put_design(link_id: UUID, body: DesignIn, svc: Svc) -> DesignOut:
     return await svc.put_design(link_id, body)
 
 
+@router.get("/design/logo", dependencies=[Depends(require_role(Role.viewer))])
+async def get_logo(link_id: UUID, svc: Svc) -> Response:
+    png = await svc.get_logo(link_id)
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
 @router.post(
     "/design/logo",
     response_model=DesignOut,

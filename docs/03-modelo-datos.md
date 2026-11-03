@@ -9,7 +9,7 @@ Toda tabla de negocio lleva `org_id` y RLS. Helpers: `is_org_member(org_id)`, `h
 | `platform_admins` | user_id → auth.users | Solo modificable por service role |
 | `dynamic_links` | id uuid, org_id, slug unique, name, destination_url, fallback_url, status (active/paused/archived/suspended_at), starts_at, expires_at, created_by, created_at, updated_at | slug inmutable (trigger); suspended_at solo platform admin; CHECKs de URL |
 | `link_destination_history` | id, link_id, org_id, old_url, new_url, changed_by, changed_at | Trigger al cambiar destination_url |
-| `qr_designs` | link_id PK, org_id, fg, bg, logo_path, frame, ecc_level, style jsonb, updated_at | Logo en bucket privado `logos/{org_id}/{link_id}-uuid.png`; ECC H forzado con logo |
+| `qr_designs` | link_id PK, org_id, fg, bg, logo_path, frame, ecc_level, style jsonb, updated_at | Logo/imagen en bucket privado `logos/{org_id}/{link_id}-uuid.png`; ECC H forzado con logo o `image_mode ≠ none`; `style` admite `image_mode`, `image_intensity` y `image_contrast` (sin migración) |
 | `nfc_tags` | id uuid, link_id, org_id, uid unique per org, label, location, created_at | RLS: viewer lee, editor crea/edita, admin+ borra |
 | `scan_events` | id bigint identity, link_id, org_id, channel (qr/nfc/direct), tag_id, occurred_at, country, device, os, browser, referer, ip_hash, is_bot | Insert solo service role (RPC); índices (link_id, occurred_at desc), (org_id, occurred_at desc), BRIN |
 | `scan_daily_rollups` | link_id, org_id, day date, scans, unique_visitors, closed_through | PK (link_id, day); actualizado por pg_cron cada 15 min |
