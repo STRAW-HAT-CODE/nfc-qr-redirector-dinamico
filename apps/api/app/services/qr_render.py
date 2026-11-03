@@ -223,8 +223,13 @@ def contrast_ratio(fg: str, bg: str) -> float:
     return (hi + 0.05) / (lo + 0.05)
 
 
-def check_design(design: QrDesign) -> list[str]:
-    """Avisos (no bloqueantes) sobre legibilidad."""
+def check_design(design: QrDesign, has_logo: bool | None = None) -> list[str]:
+    """Avisos (no bloqueantes) sobre legibilidad.
+
+    `has_logo` permite indicar que hay logo sin cargar sus bytes; por defecto `design.logo`.
+    """
+    if has_logo is None:
+        has_logo = design.logo is not None
     warnings: list[str] = []
     transparent = design.bg_transparent and design.image_mode == "none"
     if transparent:
@@ -244,10 +249,10 @@ def check_design(design: QrDesign) -> list[str]:
         )
     if design.margin < 4:
         warnings.append("Zona de silencio menor a 4 módulos: algunos lectores pueden fallar.")
-    if design.logo is not None and design.ecc != "H":
+    if has_logo and design.ecc != "H":
         warnings.append("Con logo se fuerza la corrección de errores H.")
     if design.image_mode != "none":
-        if design.logo is None:
+        if not has_logo:
             warnings.append("Modo imagen sin imagen: sube un logo o imagen.")
         else:
             warnings.append(

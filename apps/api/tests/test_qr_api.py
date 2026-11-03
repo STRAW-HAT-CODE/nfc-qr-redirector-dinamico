@@ -355,6 +355,22 @@ def test_logo_upload_clears_preset(make: Any) -> None:
     assert j["logo_preset"] is None and j["has_logo"] is True
 
 
+def test_logo_upload_then_delete_leaves_no_logo_nor_preset(make: Any) -> None:
+    make("editor")
+    c = TestClient(app)
+    c.put(d(), headers=H, json=PRESET)
+    c.post(d("design/logo"), headers=H, files={"file": ("x.png", png_bytes())})
+    j = c.get(d(), headers=H).json()
+    assert j["has_logo"] is True and j["logo_preset"] is None
+    assert "logo_preset" not in j["style"]
+    r = c.delete(d("design/logo"), headers=H)
+    assert r.status_code == 200
+    for j in (r.json(), c.get(d(), headers=H).json()):
+        assert j["has_logo"] is False and j["logo_preset"] is None
+        assert j["image_mode"] == "none" and j["style"]["image_mode"] == "none"
+        assert "logo_preset" not in j["style"]
+
+
 def test_logo_orphan_removed_if_db_fails(make: Any) -> None:
     b = make("editor")
     b.fail_db_write = True

@@ -1,16 +1,8 @@
-import os from "node:os";
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const supabaseWs = supabaseUrl.replace(/^http/, "ws");
-
-const devOrigins = isProd
-  ? undefined
-  : Object.values(os.networkInterfaces())
-      .flat()
-      .filter((i): i is os.NetworkInterfaceInfo => Boolean(i && i.family === "IPv4"))
-      .map((i) => i.address);
 
 // 'unsafe-inline' en script-src: lo necesitan los scripts inline de Next y de next-themes.
 // Siguiente paso: CSP con nonce generado en proxy.ts y quitar 'unsafe-inline'.
@@ -39,7 +31,6 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  allowedDevOrigins: devOrigins,
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   },

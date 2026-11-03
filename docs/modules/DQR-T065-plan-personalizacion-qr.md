@@ -17,6 +17,7 @@
 - PNG/PDF raster; el SVG de modo imagen incrusta un PNG de 2048 px (autocontenido). El QR
   limpio sigue siendo vectorial.
 - Plantillas imprimibles: logo centrado; no rasterizan la imagen.
+- Subir una imagen elimina `logo_preset` del `style`; al borrar la imagen después, el QR queda sin logo ni preset y `image_mode` vuelve a `none`.
 
 ## Contrato
 

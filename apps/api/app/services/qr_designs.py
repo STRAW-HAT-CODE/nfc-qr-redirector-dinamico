@@ -258,10 +258,11 @@ class QrDesignService:
     def _out(self, link_id: UUID, row: dict[str, Any] | None) -> DesignOut:
         is_default = row is None
         row = DEFAULT_ROW if row is None else row
-        d = self._to_design(row, preset_logo("google") if row.get("logo_path") else None)
+        d = self._to_design(row)
         has_logo = bool(row.get("logo_path"))
         preset = _row_preset(row)
-        warnings = check_design(d)
+        # _to_design ya carga el logo del preset; la imagen subida cuenta aunque no se descargue.
+        warnings = check_design(d, has_logo=has_logo or d.logo is not None)
         return DesignOut(
             link_id=str(link_id),
             fg=d.fg,
