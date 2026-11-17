@@ -1,4 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["iad1"]
+  "regions": ["iad1"],
+  "redirects": [
+    {
+      "source": "/((?!r/|v1/|healthz).*)",
+      "has": [{ "type": "host", "value": "strawhatcode.com" }],
+      "destination": "https://www.strawhatcode.com/$1",
+      "permanent": false
+    }
+  ]
 }

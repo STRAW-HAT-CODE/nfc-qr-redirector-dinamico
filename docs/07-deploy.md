@@ -81,6 +81,13 @@ Los previews de Vercel quedan tras SSO (responden 302). El redirector `/r/*` deb
 - Web: `https://dqr-48pgwp9bk-davides-projects-6878c5d7.vercel.app`: `/login` → 200.
 - `/r/AAAAAAA` → 503 genérico: la función `resolve_link` no existe aún en staging (PGRST202). Se espera 404 amable cuando el orquestador aplique las migraciones. La service key sí autentica contra PostgREST.
 
+### Dominio corto (2026-10-13)
+- `strawhatcode.com`, registrado en Spaceship. El DNS se movió después a Cloudflare (nameservers `carla`/`kipp.ns.cloudflare.com`).
+- Estado al 2026-11-17: `@` y `www` → CloudFront (sitio Nooki, proxied). Los QR funcionan por la Redirect Rule de Cloudflare "QR dinámicos → dqr-api" (302 de `/r/*` a `https://dqr-api.vercel.app`). No borrar esa regla.
+- DQR-T066: `@` pasa a CNAME `8fc78b1df21a6489.vercel-dns-017.com.` en DNS only, asignado a `dqr-api`; `www` sigue en Nooki y se quita de `dqr-api`. En `apps/api/vercel.json`, para el host `strawhatcode.com`, todo lo que no sea `/r/`, `/v1/` ni `/healthz` hace 302 a `https://www.strawhatcode.com/<ruta>`. Vuelta atrás: `@` → CNAME `d1hgsmthcmtprg.cloudfront.net` en proxied.
+- Production: `PUBLIC_REDIRECT_BASE_URL` (api) y `NEXT_PUBLIC_API_URL` (web) = `https://strawhatcode.com`. Preview sigue en `https://dqr-api.vercel.app`.
+- `dqr-api.vercel.app` se mantiene: los QR impresos con esa URL siguen funcionando.
+
 ### Promover a producción (pendiente de OK del usuario)
 1. Proyecto Supabase de producción creado y migrado (security-reviewer aprueba).
 2. Cargar las variables en el entorno `production` de cada proyecto, con valores propios y `IP_HASH_SALT` distinta.
